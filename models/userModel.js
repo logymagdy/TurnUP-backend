@@ -19,14 +19,22 @@ const userSchema = new mongoose.Schema({
     required: [true, "Password is required"],
     minlength: 6,
   },
- role: {
-  type: String,
-  enum: ["ADMIN", "serviceProvider", "RECEPTIONIST", "CLIENT"],
-  required: true,
-},
+  role: {
+    type: String,
+    enum: ["ADMIN", "serviceProvider", "RECEPTIONIST", "CLIENT"],
+    required: true,
+  },
   storeId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Store",
+    default: null,
+  },
+  otp: {
+    type: String,
+    default: null,
+  },
+  otpExpiry: {
+    type: Date,
     default: null,
   },
 }, { timestamps: true });
