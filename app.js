@@ -14,10 +14,10 @@ connectDB();
 // Routes
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/store", require("./routes/storeRoutes"));
+app.use("/api/queue", require("./routes/queueRoutes"));
 
 // Start server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
-
