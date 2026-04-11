@@ -1,6 +1,5 @@
 const Store = require("../models/storeModel");
 const User = require("../models/userModel");
-
 // Create Store
 exports.createStore = async (req, res) => {
   try {
@@ -56,7 +55,7 @@ exports.addStylist = async (req, res) => {
     const { stylistId } = req.body;
 
     const stylist = await User.findById(stylistId);
-    if (!stylist || stylist.role !== "RECEPTIONIST" && stylist.role !== "CLIENT")
+    if (!stylist)
       return res.status(404).json({ message: "User not found" });
 
     const store = await Store.findOne({ owner: req.user.id });

@@ -14,7 +14,7 @@ const { protect } = require("../middleware/authMiddleware");
 router.post("/register", registerUser);
 router.post("/login", loginUser);
 router.get("/profile", protect, getProfile);
-router.put("/update-password", updatePassword);
+router.put("/update-password", protect, updatePassword);
 router.post("/forgot-password", forgotPassword);
 router.post("/verify-otp", verifyOtp);
 router.post("/reset-password", resetPassword);
