@@ -5,7 +5,12 @@ const connectDB = require("./config/db");
 
 // Initialize app
 const app = express();
-app.use(cors());
+
+app.use(cors({
+  origin: "http://localhost:3000", // or your frontend URL
+  credentials: true
+}));
+
 app.use(express.json());
 
 // Connect to MongoDB
