@@ -7,11 +7,14 @@ import {
   ScrollView,
   Image,
   TouchableOpacity,
-  
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useNavigation, useRoute } from "@react-navigation/native";
+import * as SecureStore from "expo-secure-store";
 
-export default function HomeScreen({ navigation, route }) {
+export default function HomeScreen({ logout }) {
+  const route = useRoute();
+  const navigation = useNavigation();
   const currentRoute = route.name;
 
   const featuredSalons = [
@@ -54,10 +57,20 @@ export default function HomeScreen({ navigation, route }) {
     },
   ];
 
+  const deleteToken = async () => {
+    try {
+      await SecureStore.deleteItemAsync("userToken");
+    } catch (e) {
+      console.error("Error deleting token:", e);
+    }
+  };
+  const Signout = () => {
+    logout();
+    deleteToken();
+  };
   return (
     <View style={{ flex: 1, backgroundColor: "#F8F8F8" }}>
       <ScrollView showsVerticalScrollIndicator={false}>
-
         {/* HEADER */}
         <View style={styles.header}>
           <Image
@@ -66,8 +79,19 @@ export default function HomeScreen({ navigation, route }) {
           />
 
           <View style={styles.headerRight}>
-            <Ionicons name="heart-outline" size={22} style={{ marginRight: 12 }} />
+            <Ionicons
+              name="heart-outline"
+              size={22}
+              style={{ marginRight: 12 }}
+            />
             <Ionicons name="notifications-outline" size={22} />
+            <TouchableOpacity onPress={Signout}>
+              <Ionicons
+                name="log-out-outline"
+                size={22}
+                style={{ marginLeft: 12 }}
+              />
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -135,7 +159,7 @@ export default function HomeScreen({ navigation, route }) {
           </View>
 
           <View style={styles.featuredContainer}>
-            {featuredSalons.map((item) => (
+            {featuredSalons.map(item => (
               <View key={item.id} style={styles.featuredCard}>
                 <Image source={item.image} style={styles.featuredImg} />
 
@@ -169,7 +193,7 @@ export default function HomeScreen({ navigation, route }) {
           </View>
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {salons.map((item) => (
+            {salons.map(item => (
               <View key={item.id} style={styles.nearbyCard}>
                 <Image source={item.image} style={styles.nearbyImg} />
 
@@ -186,7 +210,6 @@ export default function HomeScreen({ navigation, route }) {
               </View>
             ))}
           </ScrollView>
-
         </View>
       </ScrollView>
 
@@ -198,7 +221,7 @@ export default function HomeScreen({ navigation, route }) {
           { name: "Booking", icon: "calendar-outline" },
           { name: "Inbox", icon: "mail-outline" },
           { name: "Profile", icon: "person-outline" },
-        ].map((tab) => (
+        ].map(tab => (
           <TouchableOpacity key={tab.name}>
             <Ionicons
               name={tab.icon}

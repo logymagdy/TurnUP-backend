@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require("express");
 const cors = require("cors");
 const connectDB = require("./config/db");
+const setupSwagger = require("./docs/swagger");
 
 // Initialize app
 const app = express();
@@ -12,6 +13,7 @@ app.use(cors({
 }));
 
 app.use(express.json());
+setupSwagger(app);
 
 // Connect to MongoDB
 connectDB();

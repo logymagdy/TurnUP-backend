@@ -2,16 +2,14 @@ import React, { useEffect } from "react";
 import { View, Text, Image, ActivityIndicator, StyleSheet } from "react-native";
 
 export default function SplashScreen({ navigation }) {
-
-  useEffect(() => {
-    setTimeout(() => {
-      navigation.replace("AccountType");
-    }, 3000);
-  }, []);
+  // useEffect(() => {
+  //   setTimeout(() => {
+  //     navigation.replace("AccountType");
+  //   }, 3000);
+  // }, []);
 
   return (
     <View style={styles.container}>
-
       <View style={styles.centerContent}>
         <Image
           source={require("../Images/PHOTO-2025-12-22-22-34-52-removebg-preview.png")}
@@ -20,7 +18,6 @@ export default function SplashScreen({ navigation }) {
       </View>
 
       <ActivityIndicator size="small" color="#7B3FE4" style={styles.loader} />
-
     </View>
   );
 }
@@ -38,15 +35,15 @@ const styles = StyleSheet.create({
   },
 
   logo: {
-  width: 500,   
-  height: 250,
-  resizeMode: "contain",
-  marginBottom: 2, 
-},
+    width: 500,
+    height: 250,
+    resizeMode: "contain",
+    marginBottom: 2,
+  },
 
   loader: {
     position: "absolute",
-    bottom: 300, 
+    bottom: 300,
     alignSelf: "center",
   },
 });

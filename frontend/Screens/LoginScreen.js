@@ -9,15 +9,34 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons, FontAwesome } from "@expo/vector-icons";
+import axios from "axios";
+import { useNavigation } from "@react-navigation/native";
+import * as SecureStore from "expo-secure-store";
 
-export default function LoginScreen({ navigation }) {
+export default function LoginScreen({ signIn }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const navigation = useNavigation();
 
-  const handleLogin = () => {
-    console.log("Email:", email);
-    console.log("Password:", password);
-    // هنا بعدين نحط API
+  const saveUserToken = async token => {
+    try {
+      await SecureStore.setItemAsync("userToken", token);
+    } catch (e) {
+      console.error("Error saving token:", e);
+    }
+  };
+
+  const handleLogin = async () => {
+    await axios
+      .post("http://localhost:3000/api/auth/login", { email, password })
+      .then(response => {
+        console.log("Login successful:", response.data);
+        saveUserToken(response.data.token);
+        signIn(email, password);
+      })
+      .catch(error => {
+        console.error("Login error:", error);
+      });
   };
 
   return (
