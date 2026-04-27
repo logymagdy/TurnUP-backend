@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -8,14 +8,39 @@ import {
   Image,
   TouchableOpacity,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { useNavigation, useRoute } from "@react-navigation/native";
+import { Ionicons, FontAwesome5 } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
 import * as SecureStore from "expo-secure-store";
+import * as Location from "expo-location";
+import BottomNav from "../components/BottomNav";
 
 export default function HomeScreen({ logout }) {
-  const route = useRoute();
   const navigation = useNavigation();
-  const currentRoute = route.name;
+
+  const [showLocation, setShowLocation] = useState(true);
+  const [favorites, setFavorites] = useState([]);
+
+  useEffect(() => {
+    requestLocation();
+  }, []);
+
+  const requestLocation = async () => {
+    let { status } = await Location.requestForegroundPermissionsAsync();
+    setShowLocation(status !== "granted");
+  };
+
+  const toggleFavorite = (item) => {
+    const exists = favorites.find((f) => f.id === item.id);
+    if (exists) {
+      setFavorites(favorites.filter((f) => f.id !== item.id));
+    } else {
+      setFavorites([...favorites, item]);
+    }
+  };
+
+  const isFavorite = (item) => {
+    return favorites.find((f) => f.id === item.id);
+  };
 
   const featuredSalons = [
     {
@@ -23,16 +48,28 @@ export default function HomeScreen({ logout }) {
       image: require("../Images/ts.jpeg"),
       name: "Tarek Elsohayar",
       category: "Hair • Nails • Facial",
-      address: "360 Stillwater Rd",
-      rating: "4.8 (3.1k)",
+      rating: "4.8 (49.5k)",
     },
     {
       id: 2,
+      image: require("../Images/Belal.jpeg"),
+      name: "Belal Gad",
+      category: "Hair • Coloring • Styling",
+      rating: "4.7 (239k)",
+    },
+    {
+      id: 3,
       image: require("../Images/curls.jpeg"),
       name: "Mohamed El Soury",
-      category: "Hair • Facial",
-      address: "25 Alexandria St",
-      rating: "4.7 (2.1k)",
+      category: "Hair • Facial • Treatments",
+      rating: "5 (275k)",
+    },
+    {
+      id: 4,
+      image: require("../Images/justcurls.jpeg"),
+      name: "Just Curls",
+      category: "Curly Hair • Styling",
+      rating: "4.5 (2,441)",
     },
   ];
 
@@ -41,61 +78,50 @@ export default function HomeScreen({ logout }) {
       id: 1,
       image: require("../Images/curls.jpeg"),
       category: "Hair • Facial",
-      name: "Mohamed El Soury Salon",
-      address: "360 Stillwater Rd",
-      rating: "4.7 (2.7k)",
+      name: "Mohamed El Soury ",
+      rating: "5 (275k)",
       discount: "-58%",
     },
     {
       id: 2,
-      image: require("../Images/ts.jpeg"),
+      image: require("../Images/beurity.jpeg"),
       category: "Hair • Nails",
-      name: "Tarek Salon",
-      address: "Alexandria St",
-      rating: "4.5 (1.2k)",
+      name: "Mohamed EL Beiruty",
+      rating: "4.8 (43.9k)",
       discount: "-30%",
     },
   ];
 
-  const deleteToken = async () => {
-    try {
-      await SecureStore.deleteItemAsync("userToken");
-    } catch (e) {
-      console.error("Error deleting token:", e);
-    }
-  };
-  const Signout = () => {
-    logout();
-    deleteToken();
-  };
   return (
     <View style={{ flex: 1, backgroundColor: "#F8F8F8" }}>
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
+
         {/* HEADER */}
         <View style={styles.header}>
-          <Image
-            source={require("../Images/PHOTO-2025-12-22-22-34-52-removebg-preview.png")}
-            style={styles.logo}
-          />
+          <View style={styles.headerRow}>
+            <View style={{ width: 60 }} />
 
-          <View style={styles.headerRight}>
-            <Ionicons
-              name="heart-outline"
-              size={22}
-              style={{ marginRight: 12 }}
-            />
-            <Ionicons name="notifications-outline" size={22} />
-            <TouchableOpacity onPress={Signout}>
-              <Ionicons
-                name="log-out-outline"
-                size={22}
-                style={{ marginLeft: 12 }}
+            <View style={styles.logoCenter}>
+              <Image
+                source={require("../Images/PHOTO-2025-12-22-22-34-52-removebg-preview.png")}
+                style={styles.logo}
               />
-            </TouchableOpacity>
-          </View>
-        </View>
+            </View>
 
-        <View style={styles.container}>
+            <View style={styles.iconsRow}>
+              <TouchableOpacity onPress={() => navigation.navigate("Favorites")}>
+                <Ionicons name="heart" size={24} color="#7B3FE4" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => navigation.navigate("Notificationshome")}
+                style={{ marginLeft: 12 }}
+              >
+                <Ionicons name="notifications-outline" size={24} />
+              </TouchableOpacity>
+            </View>
+          </View>
+
           <Text style={styles.greeting}>Hello, Nour 👋</Text>
 
           {/* SEARCH */}
@@ -136,73 +162,77 @@ export default function HomeScreen({ logout }) {
 
           <View style={styles.grid}>
             {[
-              { icon: "cut-outline", label: "Women" },
-              { icon: "cut", label: "Men" },
-              { icon: "brush-outline", label: "Nails" },
-              { icon: "color-palette-outline", label: "Coloring" },
-              { icon: "sparkles-outline", label: "Facial" },
-              { icon: "happy-outline", label: "Kids" },
+              { icon: "air-freshener", label: "Hair Services" },
+              { icon: "spa", label: "Facial Services" },
+              { icon: "hand-sparkles", label: "Nail Services" },
+              { icon: "air-freshener", label: "Hair Removal" },
+              { icon: "paint-brush", label: "Makeup Services" },
+              { icon: "gem", label: "Bridal & Packages" },
             ].map((item, i) => (
-              <View key={i} style={styles.gridItem}>
+              <TouchableOpacity key={i} style={styles.gridItem}>
                 <View style={styles.catCircle}>
-                  <Ionicons name={item.icon} size={20} color="#333" />
+                  <FontAwesome5 name={item.icon} size={24} color="#7B3FE4" />
                 </View>
                 <Text style={styles.catText}>{item.label}</Text>
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
 
-          {/* FEATURED (GRID) */}
-          <View style={styles.row}>
-            <Text style={styles.title}>Featured Salon</Text>
-            <Text style={styles.viewAll}>View all</Text>
-          </View>
+          {/* FEATURED */}
+          <Text style={styles.title}>Featured Salon</Text>
 
-          <View style={styles.featuredContainer}>
-            {featuredSalons.map(item => (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {featuredSalons.map((item) => (
               <View key={item.id} style={styles.featuredCard}>
-                <Image source={item.image} style={styles.featuredImg} />
 
-                <View style={styles.favIcon}>
-                  <Ionicons name="heart-outline" size={14} />
+                <TouchableOpacity
+                  style={styles.heart}
+                  onPress={() => toggleFavorite(item)}
+                >
+                  <Ionicons
+                    name={isFavorite(item) ? "heart" : "heart-outline"}
+                    size={18}
+                    color="#7B3FE4"
+                  />
+                </TouchableOpacity>
+
+                <View style={styles.logoCircle}>
+                  <Image source={item.image} style={styles.logoImage} />
                 </View>
 
                 <Text style={styles.category}>{item.category}</Text>
                 <Text style={styles.name}>{item.name}</Text>
-                <Text style={styles.address}>{item.address}</Text>
+
                 <Text style={styles.rating}>⭐ {item.rating}</Text>
-              </View>
-            ))}
-          </View>
-
-          {/* SEARCH TAGS */}
-          <Text style={styles.title}>Most Search Interest</Text>
-
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {["Haircut", "Facial", "Nails", "Color", "Spa"].map((t, i) => (
-              <View key={i} style={styles.searchTag}>
-                <Text style={styles.searchTagText}>{t}</Text>
               </View>
             ))}
           </ScrollView>
 
-          {/* NEARBY (HORIZONTAL) */}
-          <View style={styles.row}>
-            <Text style={styles.title}>Nearby Offers</Text>
-            <Text style={styles.viewAll}>View all</Text>
-          </View>
+          {/* NEARBY */}
+          <Text style={styles.title}>Nearby Offers</Text>
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {salons.map(item => (
+            {salons.map((item) => (
               <View key={item.id} style={styles.nearbyCard}>
+
+                <TouchableOpacity
+                  style={styles.heart}
+                  onPress={() => toggleFavorite(item)}
+                >
+                  <Ionicons
+                    name={isFavorite(item) ? "heart" : "heart-outline"}
+                    size={18}
+                    color="#7B3FE4"
+                  />
+                </TouchableOpacity>
+
                 <Image source={item.image} style={styles.nearbyImg} />
 
-                <View style={{ marginLeft: 10 }}>
-                  <Text style={styles.category}>{item.category}</Text>
-                  <Text style={styles.name}>{item.name}</Text>
-                  <Text style={styles.address}>{item.address}</Text>
+                <View style={{ marginLeft: 12 }}>
+                  <Text style={styles.categoryLeft}>{item.category}</Text>
+                  <Text style={styles.nameLeft}>{item.name}</Text>
 
-                  <View style={{ flexDirection: "row" }}>
+                  <View style={styles.ratingRow}>
                     <Text style={styles.rating}>⭐ {item.rating}</Text>
                     <Text style={styles.discount}>{item.discount}</Text>
                   </View>
@@ -210,70 +240,47 @@ export default function HomeScreen({ logout }) {
               </View>
             ))}
           </ScrollView>
+
         </View>
       </ScrollView>
 
-      {/* BOTTOM NAV */}
-      <View style={styles.bottomNav}>
-        {[
-          { name: "Home", icon: "home" },
-          { name: "Search", icon: "compass-outline" },
-          { name: "Booking", icon: "calendar-outline" },
-          { name: "Inbox", icon: "mail-outline" },
-          { name: "Profile", icon: "person-outline" },
-        ].map(tab => (
-          <TouchableOpacity key={tab.name}>
-            <Ionicons
-              name={tab.icon}
-              size={20}
-              color={currentRoute === tab.name ? "#7B3FE4" : "#999"}
-            />
-          </TouchableOpacity>
-        ))}
-      </View>
+      <BottomNav />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { paddingHorizontal: 16 },
+  header: { marginTop: 40, paddingHorizontal: 16 },
 
-  header: {
-    marginTop: 40,
+  headerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
   },
 
-  headerRight: {
+  logoCenter: {
     position: "absolute",
-    right: 16,
-    flexDirection: "row",
+    left: 0,
+    right: 0,
+    alignItems: "center",
   },
 
-  logo: {
-    width: 190,
-    height: 50,
-    resizeMode: "contain",
-  },
+  logo: { width: 150, height: 60, resizeMode: "contain" },
 
-  greeting: {
-    marginTop: 10,
-    color: "#777",
-  },
+  greeting: { marginTop: 10, color: "#777", fontSize: 16 },
+
+  iconsRow: { flexDirection: "row" },
 
   searchBox: {
     marginTop: 10,
-    backgroundColor: "#EFEFEF",
+    backgroundColor: "#fff",
     borderRadius: 25,
-    paddingHorizontal: 15,
-    paddingVertical: 10,
+    padding: 12,
     flexDirection: "row",
     alignItems: "center",
   },
 
-  input: {
-    marginLeft: 8,
-    flex: 1,
-  },
+  input: { marginLeft: 8, flex: 1 },
 
   banner: {
     marginTop: 15,
@@ -303,18 +310,14 @@ const styles = StyleSheet.create({
 
   bannerBtn: {
     backgroundColor: "#7B3FE4",
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 25,
-    marginTop: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 18,
+    borderRadius: 20,
+    marginTop: 10,
     alignSelf: "flex-start",
   },
 
-  bannerBtnText: {
-    color: "#fff",
-    fontSize: 13,
-    fontWeight: "800",
-  },
+  bannerBtnText: { color: "#fff" },
 
   circle: {
     position: "absolute",
@@ -328,147 +331,91 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-  title: {
-    marginTop: 20,
-    fontWeight: "bold",
-    fontSize: 14,
-  },
-
-  row: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 20,
-  },
-
-  viewAll: {
-    color: "#7B3FE4",
-    fontSize: 12,
-  },
+  title: { marginTop: 18, fontWeight: "bold", fontSize: 16 },
 
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
-    marginTop: 10,
+    marginTop: 15,
   },
 
   gridItem: {
     width: "30%",
     alignItems: "center",
-    marginBottom: 15,
+    marginBottom: 25,
   },
 
   catCircle: {
-    width: 55,
-    height: 55,
-    borderRadius: 30,
-    backgroundColor: "#fff",
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: "#F3F0FF",
     justifyContent: "center",
     alignItems: "center",
-    elevation: 2,
   },
 
-  catText: {
-    fontSize: 11,
-    marginTop: 5,
-  },
-
-  /* FEATURED */
-  featuredContainer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 10,
-  },
+  catText: { fontSize: 12, marginTop: 8 },
 
   featuredCard: {
-    width: "48%",
-    backgroundColor: "#fff",
-    borderRadius: 15,
-    padding: 10,
-  },
-
-  featuredImg: {
-    width: "100%",
-    height: 120,
-    borderRadius: 12,
-  },
-
-  /* COMMON */
-  favIcon: {
-    position: "absolute",
-    top: 8,
-    right: 8,
-    backgroundColor: "#fff",
-    padding: 5,
-    borderRadius: 15,
-  },
-
-  category: {
-    fontSize: 10,
-    color: "#777",
-    marginTop: 5,
-  },
-
-  name: {
-    fontWeight: "bold",
-    marginTop: 2,
-  },
-
-  address: {
-    fontSize: 10,
-    color: "#999",
-  },
-
-  rating: {
-    fontSize: 11,
-  },
-
-  /* SEARCH TAGS */
-  searchTag: {
-    backgroundColor: "#7B3FE4",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginRight: 10,
+    width: 170,
+    marginRight: 15,
     marginTop: 10,
+    backgroundColor: "#fff",
+    borderRadius: 18,
+    padding: 16,
+    alignItems: "center",
+    position: "relative",
   },
 
-  searchTagText: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "500",
-  },
-
-  /* NEARBY */
   nearbyCard: {
     flexDirection: "row",
     backgroundColor: "#fff",
     borderRadius: 15,
-    padding: 10,
+    padding: 12,
     marginRight: 12,
-    width: 260,
+    marginTop: 10,
+    width: 300,
     alignItems: "center",
+    position: "relative",
   },
 
-  nearbyImg: {
-    width: 70,
-    height: 70,
-    borderRadius: 10,
+  heart: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    padding: 4,
   },
+
+  logoCircle: {
+    width: 85,
+    height: 85,
+    borderRadius: 45,
+    overflow: "hidden",
+    marginBottom: 8,
+  },
+
+  logoImage: { width: "100%", height: "100%" },
+
+  nearbyImg: { width: 65, height: 65, borderRadius: 35 },
+
+  category: { fontSize: 11, color: "#777", marginTop: 6 },
+
+  name: { fontWeight: "bold", fontSize: 14, marginTop: 4 },
+
+  ratingRow: { flexDirection: "row", marginTop: 6 },
+
+  rating: { fontSize: 12 },
+
+  categoryLeft: { fontSize: 11, color: "#777" },
+
+  nameLeft: { fontWeight: "bold", fontSize: 14 },
 
   discount: {
-    color: "#4CAF50",
-    marginLeft: 5,
-    fontWeight: "bold",
-  },
-
-  bottomNav: {
-    height: 65,
-    backgroundColor: "#fff",
-    flexDirection: "row",
-    justifyContent: "space-around",
-    alignItems: "center",
-    borderTopLeftRadius: 25,
-    borderTopRightRadius: 25,
+    color: "green",
+    marginLeft: 8,
+    fontWeight: "600",
   },
 });

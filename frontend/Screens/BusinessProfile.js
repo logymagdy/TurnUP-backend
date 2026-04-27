@@ -1,65 +1,116 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Image
+  Modal,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 export default function BusinessProfileScreen({ navigation }) {
+  const [showModal, setShowModal] = useState(false);
+
+  const handleContinue = () => {
+    setShowModal(true);
+
+    setTimeout(() => {
+      setShowModal(false);
+      navigation.replace("bushome");
+    }, 3000);
+  };
+
   return (
     <View style={styles.container}>
 
-      {/* Back Button */}
+      {/* Back */}
       <TouchableOpacity
         onPress={() => navigation.goBack()}
         style={styles.backButton}
       >
-        <Ionicons name="arrow-back" size={28} color="black" />
+        <Ionicons name="arrow-back" size={24} color="#000" />
       </TouchableOpacity>
 
-      {/* Logo */}
-      
+      <View style={styles.content}>
 
-      {/* Title */}
-      <Text style={styles.title}>Complete Your Business Profile</Text>
+        {/* Profile Image */}
+        <View style={styles.profileImageContainer}>
+          <Ionicons name="person" size={50} color="#aaa" />
+          <TouchableOpacity style={styles.editIcon}>
+            <Ionicons name="pencil" size={14} color="#fff" />
+          </TouchableOpacity>
+        </View>
 
-      {/* Profile Image */}
-      <View style={styles.profileImageContainer}>
-        <Ionicons name="person" size={60} color="#aaa" />
-        <TouchableOpacity style={styles.editIcon}>
-          <Ionicons name="pencil" size={16} color="#fff" />
+        {/* Title */}
+        <Text style={styles.title}>Complete Your Business Profile</Text>
+
+        {/* Subtitle */}
+        <Text style={styles.subtitle}>
+          Add your business details to get started
+        </Text>
+
+        {/* Inputs */}
+        <TextInput
+          placeholder="Business Name"
+          placeholderTextColor="#999"
+          style={styles.input}
+        />
+
+        <TextInput
+          placeholder="Business Category (Barbershop / Salon)"
+          placeholderTextColor="#999"
+          style={styles.input}
+        />
+
+        <TextInput
+          placeholder="City"
+          placeholderTextColor="#999"
+          style={styles.input}
+        />
+
+        <TextInput
+          placeholder="Mobile Number"
+          placeholderTextColor="#999"
+          style={styles.input}
+        />
+
+        {/* Button */}
+        <TouchableOpacity
+          style={styles.button}
+          onPress={handleContinue}
+        >
+          <Text style={styles.buttonText}>Continue</Text>
         </TouchableOpacity>
+
       </View>
 
-      {/* Inputs */}
-      <TextInput placeholder="Business Name" style={styles.input} />
-      <TextInput placeholder="Business Category (Barbershop / Salon)" style={styles.input} />
-      <TextInput placeholder="City" style={styles.input} />
-      <TextInput placeholder="Mobile Number" style={styles.input} />
+      {/* 🎉 POPUP */}
+      <Modal transparent visible={showModal} animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
 
-      {/* Continue Button */}
-      <TouchableOpacity
-        style={styles.button}
-        onPress={() => navigation.navigate("SuccessScreen")}
-      >
-        <Text style={styles.buttonText}>Continue</Text>
-      </TouchableOpacity>
+            <View style={styles.checkCircle}>
+              <Ionicons name="checkmark" size={50} color="#fff" />
+            </View>
+
+            <Text style={styles.modalTitle}>Congratulations!</Text>
+            <Text style={styles.modalText}>
+              Your business account is ready .You will be redirected to the setup process.
+            </Text>
+
+          </View>
+        </View>
+      </Modal>
 
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-
   container: {
     flex: 1,
     backgroundColor: "#fff",
-    paddingHorizontal: 25,
-    paddingTop: 150,
   },
 
   backButton: {
@@ -69,24 +120,34 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
 
- 
+  content: {
+    marginTop: 100,
+    paddingHorizontal: 25,
+  },
 
   title: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: "700",
     textAlign: "center",
-    marginBottom: 20,
+  },
+
+  subtitle: {
+    fontSize: 13,
+    color: "#777",
+    textAlign: "center",
+    marginTop: 8,
+    marginBottom: 25,
   },
 
   profileImageContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: "#eee",
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: "#F3F4F6",
     alignSelf: "center",
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 40,
+    marginBottom: 20,
   },
 
   editIcon: {
@@ -95,14 +156,14 @@ const styles = StyleSheet.create({
     right: 0,
     backgroundColor: "#6C3BFF",
     borderRadius: 15,
-    padding: 6,
+    padding: 5,
   },
 
   input: {
     backgroundColor: "#F3F4F6",
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 30,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 15,
   },
 
   button: {
@@ -116,6 +177,44 @@ const styles = StyleSheet.create({
   buttonText: {
     color: "#fff",
     fontWeight: "600",
+    fontSize: 15,
   },
 
+  /* 🎉 POPUP */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  modalBox: {
+    width: 300,
+    backgroundColor: "#fff",
+    borderRadius: 25,
+    padding: 30,
+    alignItems: "center",
+  },
+
+  checkCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "#4CAF50",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#6C3BFF",
+    marginBottom: 10,
+  },
+
+  modalText: {
+    textAlign: "center",
+    color: "#555",
+  },
 });

@@ -12,7 +12,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 export default function OtpScreen({ navigation }) {
   const [otp, setOtp] = useState(["", "", "", ""]);
-  const [time, setTime] = useState(150); // 2:30
+  const [time, setTime] = useState(150);
   const inputs = useRef([]);
 
   // ⏱ Timer
@@ -32,7 +32,18 @@ export default function OtpScreen({ navigation }) {
     return `${min}:${sec < 10 ? "0" : ""}${sec}`;
   };
 
-  // 🔢 Handle typing
+  // 🔥 Auto Submit
+  useEffect(() => {
+    if (otp.every((digit) => digit !== "")) {
+      handleVerify();
+    }
+  }, [otp]);
+
+  const handleVerify = () => {
+    navigation.navigate("NewPassword");
+  };
+
+  // 🔢 typing
   const handleChange = (text, index) => {
     const newOtp = [...otp];
     newOtp[index] = text;
@@ -43,14 +54,14 @@ export default function OtpScreen({ navigation }) {
     }
   };
 
-  // ⬅️ Backspace يرجّع
+  // ⬅️ backspace
   const handleKeyPress = (e, index) => {
     if (e.nativeEvent.key === "Backspace" && otp[index] === "" && index > 0) {
       inputs.current[index - 1].focus();
     }
   };
 
-  // 🔁 Resend
+  // 🔁 resend
   const handleResend = () => {
     setTime(150);
     setOtp(["", "", "", ""]);
@@ -65,51 +76,62 @@ export default function OtpScreen({ navigation }) {
         onPress={() => navigation.goBack()}
         style={styles.backButton}
       >
-        <Ionicons name="arrow-back" size={26} color="#000" />
+        <Ionicons name="arrow-back" size={22} color="#000" />
       </TouchableOpacity>
 
       {/* Logo */}
-      <Image
-        source={require("../Images/PHOTO-2025-12-22-22-34-52-removebg-preview.png")}
-        style={styles.logo}
-      />
-
-      <Text style={styles.title}>Email verification</Text>
-      <Text style={styles.subtitle}>
-        Please type OTP code that we give you
-      </Text>
-
-      {/* OTP */}
-      <View style={styles.row}>
-        {otp.map((digit, index) => (
-          <TextInput
-            key={index}
-            ref={(ref) => (inputs.current[index] = ref)}
-            style={[styles.box, digit && styles.activeBox]}
-            keyboardType="number-pad"
-            maxLength={1}
-            value={digit}
-            onChangeText={(text) => handleChange(text, index)}
-            onKeyPress={(e) => handleKeyPress(e, index)}
-          />
-        ))}
+      <View style={styles.logoContainer}>
+        <Image
+          source={require("../Images/PHOTO-2025-12-22-22-34-52-removebg-preview.png")}
+          style={styles.logo}
+        />
       </View>
 
-      {/* Timer / Resend */}
-      {time > 0 ? (
-        <Text style={styles.resend}>Resend in {formatTime()}</Text>
-      ) : (
-        <TouchableOpacity onPress={handleResend}>
-          <Text style={styles.resend}>Resend Code</Text>
-        </TouchableOpacity>
-      )}
+      {/* 👇 مهم عشان يظبط المسافات */}
+      <View style={styles.flexArea}>
+        <View style={styles.content}>
 
-      {/* Button */}
-      <TouchableOpacity onPress={() => navigation.navigate("resetbus")}>
-        <LinearGradient colors={["#7B3FF2", "#5F2EEA"]} style={styles.button}>
+          <Text style={styles.title}>Email verification</Text>
+
+          <Text style={styles.subtitle}>
+            Please type OTP code that we sent to you
+          </Text>
+
+          {/* OTP */}
+          <View style={styles.row}>
+            {otp.map((digit, index) => (
+              <TextInput
+                key={index}
+                ref={(ref) => (inputs.current[index] = ref)}
+                style={[styles.box, digit && styles.activeBox]}
+                keyboardType="number-pad"
+                maxLength={1}
+                value={digit}
+                onChangeText={(text) => handleChange(text, index)}
+                onKeyPress={(e) => handleKeyPress(e, index)}
+              />
+            ))}
+          </View>
+
+          {/* Timer */}
+          {time > 0 ? (
+            <Text style={styles.resend}>Resend in {formatTime()}</Text>
+          ) : (
+            <TouchableOpacity onPress={handleResend}>
+              <Text style={styles.resend}>Resend Code</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Button */}
+
+          <TouchableOpacity onPress={() => navigation.navigate("resetbus")}>
+          <LinearGradient colors={["#6E26EA", "#6E26EA"]} style={styles.button}>
           <Text style={styles.buttonText}>Verify OTP</Text>
-        </LinearGradient>
-      </TouchableOpacity>
+          </LinearGradient>
+          </TouchableOpacity>
+
+        </View>
+      </View>
 
     </View>
   );
@@ -118,21 +140,41 @@ export default function OtpScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 25,
-    paddingTop: 80,
     backgroundColor: "#fff",
+  },
+
+  backButton: {
+    position: "absolute",
+    top: 60,
+    left: 20,
+    zIndex: 10,
+  },
+
+  /* نفس باقي الشاشات */
+  logoContainer: {
+    alignItems: "center",
+    marginTop: 100,
+    marginBottom: 20,
   },
 
   logo: {
     width: 200,
-    height: 150,
+    height: 120,
     resizeMode: "contain",
-    alignSelf: "center",
-    marginBottom: 10,
+  },
+
+  flexArea: {
+    flex: 1,
+    justifyContent: "flex-start",
+  },
+
+  content: {
+    paddingHorizontal: 25,
+    marginTop: 10,
   },
 
   title: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: "bold",
     marginBottom: 10,
   },
@@ -140,6 +182,7 @@ const styles = StyleSheet.create({
   subtitle: {
     color: "#777",
     marginBottom: 30,
+    lineHeight: 20,
   },
 
   row: {
@@ -159,14 +202,14 @@ const styles = StyleSheet.create({
   },
 
   activeBox: {
-    backgroundColor: "#6C3BFF",
+    backgroundColor: "#6E26EA",
     color: "#fff",
-    borderColor: "#6C3BFF",
+    borderColor: "#6E26EA",
   },
 
   resend: {
     textAlign: "right",
-    color: "#6C3BFF",
+    color: "#6E26EA",
     marginBottom: 30,
     fontSize: 13,
   },
@@ -181,12 +224,5 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "bold",
     fontSize: 16,
-  },
-
-  backButton: {
-    position: "absolute",
-    top: 60,
-    left: 20,
-    zIndex: 10,
   },
 });

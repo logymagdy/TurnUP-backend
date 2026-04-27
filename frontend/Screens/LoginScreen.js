@@ -14,11 +14,14 @@ import { useNavigation } from "@react-navigation/native";
 import * as SecureStore from "expo-secure-store";
 
 export default function LoginScreen({ signIn }) {
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [secure, setSecure] = useState(true);
+
   const navigation = useNavigation();
 
-  const saveUserToken = async token => {
+  const saveUserToken = async (token) => {
     try {
       await SecureStore.setItemAsync("userToken", token);
     } catch (e) {
@@ -28,105 +31,131 @@ export default function LoginScreen({ signIn }) {
 
   const handleLogin = async () => {
     await axios
-      .post("http://localhost:3000/api/auth/login", { email, password })
-      .then(response => {
-        console.log("Login successful:", response.data);
+      .post("http://localhost:3000/api/auth/login", {
+        email,
+        password,
+      })
+      .then((response) => {
         saveUserToken(response.data.token);
         signIn(email, password);
       })
-      .catch(error => {
+      .catch((error) => {
         console.error("Login error:", error);
       });
   };
 
   return (
     <View style={styles.container}>
+      {/* Back */}
       <TouchableOpacity
         onPress={() => navigation.goBack()}
         style={styles.backButton}
       >
-        <Ionicons name="arrow-back" size={26} color="#000" />
+        <Ionicons name="arrow-back" size={22} color="#000" />
       </TouchableOpacity>
 
-      {/* Logo */}
-      <Image
-        source={require("../Images/PHOTO-2025-12-22-22-34-52-removebg-preview.png")}
-        style={styles.logo}
-      />
-
-      {/* Title */}
-      <Text style={styles.title}>Welcome </Text>
-      <Text style={styles.subtitle}>
-        Glad to meet you again!, please login to use the app.
-      </Text>
-
-      {/* Email Input */}
-      <View style={styles.inputContainer}>
-        <Ionicons name="mail-outline" size={20} color="#999" />
-        <TextInput
-          placeholder="Email address"
-          placeholderTextColor="#999"
-          style={styles.input}
-          value={email}
-          onChangeText={setEmail}
+  
+      <View style={styles.logoContainer}>
+        <Image
+          source={require("../Images/PHOTO-2025-12-22-22-34-52-removebg-preview.png")}
+          style={styles.logo}
         />
       </View>
 
-      {/* Password Input */}
-      <View style={styles.inputContainer}>
-        <Ionicons name="lock-closed-outline" size={20} color="#999" />
-        <TextInput
-          placeholder="Password"
-          placeholderTextColor="#999"
-          secureTextEntry
-          style={styles.input}
-          value={password}
-          onChangeText={setPassword}
-        />
-        <Ionicons name="eye-outline" size={20} color="#999" />
-      </View>
-
-      {/* Forgot Password */}
-      <TouchableOpacity onPress={() => navigation.navigate("ForgotPassword")}>
-        <Text style={styles.forgot}>Forgot password?</Text>
-      </TouchableOpacity>
-
-      {/* Sign In Button */}
-      <TouchableOpacity onPress={handleLogin}>
-        <LinearGradient colors={["#7B3FF2", "#5F2EEA"]} style={styles.button}>
-          <Text style={styles.buttonText}>Sign In</Text>
-        </LinearGradient>
-      </TouchableOpacity>
-
-      {/* OR Divider */}
-      <View style={styles.orContainer}>
-        <View style={styles.line} />
-        <Text style={styles.or}>or</Text>
-        <View style={styles.line} />
-      </View>
-
-      {/* Google */}
-      <TouchableOpacity style={styles.socialBtn}>
-        <FontAwesome name="google" size={18} color="#30a04a" />
-        <Text style={styles.socialText}>Sign in with Google</Text>
-      </TouchableOpacity>
-
-      {/* Facebook */}
-      <TouchableOpacity style={styles.socialBtn}>
-        <FontAwesome name="facebook" size={18} color="#1877F2" />
-        <Text style={styles.socialText}>Sign in with Facebook</Text>
-      </TouchableOpacity>
-
-      {/* Sign Up */}
-      <Text style={styles.signUp}>
-        Don’t have an account?{" "}
-        <Text
-          style={styles.link}
-          onPress={() => navigation.navigate("CreateAccount")}
-        >
-          Sign up
+      {/* Content */}
+      <View style={styles.content}>
+        <Text style={styles.title}>Welcome</Text>
+        <Text style={styles.subtitle}>
+          Glad to meet you again!, please login to use the app.
         </Text>
-      </Text>
+
+        {/* Username */}
+        <View style={styles.inputContainer}>
+          <Ionicons name="person-outline" size={20} color="#6E26EA" />
+          <TextInput
+            placeholder="Username"
+            placeholderTextColor="#999"
+            style={styles.input}
+            value={username}
+            onChangeText={setUsername}
+          />
+        </View>
+
+        {/* Email */}
+        <View style={styles.inputContainer}>
+          <Ionicons name="mail-outline" size={20} color="#6E26EA" />
+          <TextInput
+            placeholder="Email address"
+            placeholderTextColor="#999"
+            style={styles.input}
+            value={email}
+            onChangeText={setEmail}
+          />
+        </View>
+
+        {/* Password */}
+        <View style={styles.inputContainer}>
+          <Ionicons name="lock-closed-outline" size={20} color="#6E26EA" />
+          <TextInput
+            placeholder="Password"
+            placeholderTextColor="#999"
+            secureTextEntry={secure}
+            style={styles.input}
+            value={password}
+            onChangeText={setPassword}
+          />
+
+          <TouchableOpacity onPress={() => setSecure(!secure)}>
+            <Ionicons
+              name={secure ? "eye-off-outline" : "eye-outline"}
+              size={20}
+              color="#6E26EA"
+            />
+          </TouchableOpacity>
+        </View>
+
+        {/* Forgot */}
+        <TouchableOpacity onPress={() => navigation.navigate("ForgotPassword")}>
+          <Text style={styles.forgot}>Forgot password?</Text>
+        </TouchableOpacity>
+
+        {/* Button */}
+        <TouchableOpacity onPress={handleLogin}>
+          <LinearGradient colors={["#6E26EA", "#6E26EA"]} style={styles.button}>
+            <Text style={styles.buttonText}>Sign In</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+
+        {/* OR */}
+        <View style={styles.orContainer}>
+          <View style={styles.line} />
+          <Text style={styles.or}>or</Text>
+          <View style={styles.line} />
+        </View>
+
+        {/* Google */}
+        <TouchableOpacity style={styles.socialBtn}>
+          <FontAwesome name="google" size={18} color="#30a04a" />
+          <Text style={styles.socialText}>Sign in with Google</Text>
+        </TouchableOpacity>
+
+        {/* Facebook */}
+        <TouchableOpacity style={styles.socialBtn}>
+          <FontAwesome name="facebook" size={18} color="#1877F2" />
+          <Text style={styles.socialText}>Sign in with Facebook</Text>
+        </TouchableOpacity>
+
+        {/* Sign Up */}
+        <Text style={styles.signUp}>
+          Don’t have an account?{" "}
+          <Text
+            style={styles.link}
+            onPress={() => navigation.navigate("CreateAccount")}
+          >
+            Sign up
+          </Text>
+        </Text>
+      </View>
     </View>
   );
 }
@@ -134,17 +163,31 @@ export default function LoginScreen({ signIn }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 25,
-    paddingTop: 80,
     backgroundColor: "#fff",
   },
 
+  backButton: {
+    position: "absolute",
+    top: 60,
+    left: 20,
+    zIndex: 10,
+  },
+
+
+  logoContainer: {
+    alignItems: "center",
+    marginTop: 80,
+    marginBottom: 20,
+  },
+
   logo: {
-    width: 200,
-    height: 150,
+    width: 190,
+    height: 110,
     resizeMode: "contain",
-    alignSelf: "center",
-    marginBottom: 10,
+  },
+
+  content: {
+    paddingHorizontal: 25,
   },
 
   title: {
@@ -173,10 +216,11 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 12,
     marginLeft: 10,
+    color: "#000",
   },
 
   forgot: {
-    color: "#7B3FF2",
+    color: "#6E26EA",
     textAlign: "right",
     marginBottom: 20,
   },
@@ -233,14 +277,7 @@ const styles = StyleSheet.create({
   },
 
   link: {
-    color: "#6C3BFF",
+    color: "#6E26EA",
     fontWeight: "600",
-  },
-
-  backButton: {
-    position: "absolute",
-    top: 60,
-    left: 20,
-    zIndex: 10,
   },
 });

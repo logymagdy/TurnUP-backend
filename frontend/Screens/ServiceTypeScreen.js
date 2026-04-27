@@ -1,14 +1,16 @@
 import React from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Image } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+
 export default function ServiceTypeScreen({ navigation }) {
   return (
     <View style={styles.container}>
+      
 <TouchableOpacity
   onPress={() => navigation.goBack()}
   style={styles.backButton}
 >
-  <Ionicons name="arrow-back" size={28} color="black" />
+  <Ionicons name="arrow-back" size={22} color="black" />
 </TouchableOpacity>
       <View style={styles.centerContent}>
               <Image
@@ -68,6 +70,7 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     marginTop: -30,
     marginBottom:60,
+    fontWeight: "700",
   },
 
   button: {

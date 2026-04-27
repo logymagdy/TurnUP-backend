@@ -1,118 +1,181 @@
-import React from "react";
-import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity } from "react-native";
+import React, { useState } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  Image,
+  TouchableOpacity,
+  Animated,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import AppHeader from "../components/AppHeader";
 
-const data = [
-  { id: "1", name: "Gents Salon" },
-  { id: "2", name: "Mohamed El-Beirutiy" },
-  { id: "3", name: "Tarek EL soghayar" },
-  { id: "4", name: "Mohamed El Soury Salon" },
-   { id: "5", name: "Mohamed El Soury Salon" },
+const salonsData = [
+  {
+    id: 1,
+    image: require("../Images/ts.jpeg"),
+    name: "Tarek Elsohayar",
+    category: "Hair • Nails • Facial",
+    rating: "4.8 (49.5k)",
+  },
+  {
+    id: 2,
+    image: require("../Images/Belal.jpeg"),
+    name: "Belal Gad",
+    category: "Hair • Coloring • Styling",
+    rating: "4.7 (239k)",
+  },
+  {
+    id: 3,
+    image: require("../Images/curls.jpeg"),
+    name: "Mohamed El Soury",
+    category: "Hair • Facial • Treatments",
+    rating: "5 (275k)",
+  },
+  {
+    id: 4,
+    image: require("../Images/justcurls.jpeg"),
+    name: "Just Curls",
+    category: "Curly Hair • Styling",
+    rating: "4.5 (2,441)",
+  },
 ];
 
 export default function FavoritesScreen({ navigation }) {
-  const renderItem = ({ item }) => (
-    <View style={styles.card}>
-      <Image
-        source={{ uri: "https://i.imgur.com/1bX5QH6.jpg" }}
-        style={styles.image}
-      />
+  const [list, setList] = useState(salonsData);
 
-      <View style={{ flex: 1 }}>
-        <Text style={styles.name}>{item.name}</Text>
-        <Text style={styles.address}>360 Stillwater Rd. Palm City</Text>
-        <Text style={styles.rating}>⭐ 4.7 (2.7k)</Text>
+  const renderItem = ({ item }) => {
+    const scaleAnim = new Animated.Value(1);
+
+    const onPressHeart = () => {
+      Animated.sequence([
+        Animated.spring(scaleAnim, {
+          toValue: 1.3,
+          useNativeDriver: true,
+        }),
+        Animated.spring(scaleAnim, {
+          toValue: 1,
+          useNativeDriver: true,
+        }),
+      ]).start();
+
+      setTimeout(() => {
+        setList((prev) => prev.filter((i) => i.id !== item.id));
+      }, 200);
+    };
+
+    return (
+      <View style={styles.card}>
+        {/* IMAGE */}
+        <Image source={item.image} style={styles.image} />
+
+        {/* INFO */}
+        <View style={{ flex: 1 }}>
+          <Text style={styles.name}>{item.name}</Text>
+
+          {/* ✅ FIX هنا */}
+          <Text style={styles.address}>{item.category}</Text>
+
+          {/* ⭐ RATING */}
+          <View style={styles.ratingRow}>
+            <Ionicons name="star" size={14} color="#FFA500" />
+            <Text style={styles.rating}> {item.rating}</Text>
+          </View>
+        </View>
+
+        {/* ❤️ HEART */}
+        <TouchableOpacity onPress={onPressHeart}>
+          <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+            <Ionicons name="heart" size={22} color="#7B3FE4" />
+          </Animated.View>
+        </TouchableOpacity>
       </View>
-
-      <Ionicons name="bookmark" size={20} />
-    </View>
-  );
+    );
+  };
 
   return (
     <View style={styles.container}>
-
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.navigate("Home")}>
-          <Ionicons name="arrow-back" size={22} />
-        </TouchableOpacity>
-
-        <Text style={styles.headerTitle}>Favorites</Text>
-      </View>
-
-      {/* Tabs */}
-      <View style={styles.tabs}>
-        <Text style={[styles.tab, styles.active]}>All</Text>
-        <Text style={styles.tab}>Haircuts</Text>
-        <Text style={styles.tab}>Facial</Text>
-        <Text style={styles.tab}>Nails</Text>
-      </View>
+      <AppHeader title="Favorites" />
 
       <FlatList
-        data={data}
-        keyExtractor={(item) => item.id}
+        data={list}
+        keyExtractor={(item) => item.id.toString()}
         renderItem={renderItem}
         contentContainerStyle={{ padding: 15 }}
+        showsVerticalScrollIndicator={false}
       />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F6F6F6" },
+  container: {
+    flex: 1,
+    backgroundColor: "#F6F6F6",
+  },
 
   header: {
     flexDirection: "row",
     alignItems: "center",
-    paddingTop: 60,
+    justifyContent: "space-between",
+    paddingTop: 50,
     paddingHorizontal: 15,
     paddingBottom: 15,
     backgroundColor: "#fff",
   },
 
   headerTitle: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    textAlign: "center",
     fontSize: 16,
-    fontWeight: "600",
-    marginLeft: 10,
-  },
-
-  tabs: {
-    flexDirection: "row",
-    paddingHorizontal: 15,
-    marginTop: 10,
-  },
-
-  tab: {
-    backgroundColor: "#EDEDED",
-    paddingHorizontal: 15,
-    paddingVertical: 6,
-    borderRadius: 20,
-    marginRight: 10,
-    fontSize: 12,
-  },
-
-  active: {
-    backgroundColor: "#7B3FE4",
-    color: "#fff",
+    fontWeight: "800",
   },
 
   card: {
     flexDirection: "row",
     backgroundColor: "#fff",
-    padding: 10,
-    borderRadius: 15,
-    marginBottom: 10,
+    padding: 12,
+    borderRadius: 20,
+    marginBottom: 12,
     alignItems: "center",
+    elevation: 3,
   },
 
   image: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    marginRight: 10,
+    width: 65,
+    height: 65,
+    borderRadius: 35,
+    marginRight: 12,
   },
 
-  name: { fontWeight: "600" },
-  address: { color: "#888", fontSize: 12 },
-  rating: { fontSize: 12, marginTop: 2 },
+  name: {
+    fontWeight: "600",
+    fontSize: 14,
+  },
+
+  address: {
+    color: "#888",
+    fontSize: 12,
+    marginTop: 2,
+  },
+
+  ratingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 4,
+  },
+
+  rating: {
+    fontSize: 12,
+    marginLeft: 4,
+  },
+
+  distance: {
+    fontSize: 11,
+    color: "#999",
+    marginTop: 2,
+  },
 });
