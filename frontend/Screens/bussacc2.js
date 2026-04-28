@@ -5,18 +5,18 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Image,
   Animated,
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 
-export default function NewPasswordScreen({ navigation }) {
+export default function BusinessStep2({ navigation }) {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [showPass, setShowPass] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
+  // 🔥 animation refs
   const scaleAnims = {
     length: useRef(new Animated.Value(1)).current,
     upper: useRef(new Animated.Value(1)).current,
@@ -40,7 +40,7 @@ export default function NewPasswordScreen({ navigation }) {
     ]).start();
   };
 
-  // rules
+  // 🔐 rules
   const hasUpper = /[A-Z]/.test(password);
   const hasLower = /[a-z]/.test(password);
   const hasNumber = /[0-9]/.test(password);
@@ -73,10 +73,11 @@ export default function NewPasswordScreen({ navigation }) {
 
   const handleSubmit = () => {
     if (!isMatch || passedRules < 5) {
-      alert("Password is not valid");
+      alert("Please enter a valid strong password");
       return;
     }
-    navigation.navigate("Success");
+
+    navigation.navigate("BusinessProfile");
   };
 
   return (
@@ -84,31 +85,20 @@ export default function NewPasswordScreen({ navigation }) {
       {/* Back */}
       <TouchableOpacity
         onPress={() => navigation.goBack()}
-        style={styles.backButton}
+        style={styles.back}
       >
         <Ionicons name="arrow-back" size={22} color="#000" />
       </TouchableOpacity>
 
-      {/* Logo */}
-      <View style={styles.logoContainer}>
-        <Image
-          source={require("../Images/PHOTO-2025-12-22-22-34-52-removebg-preview.png")}
-          style={styles.logo}
-        />
-      </View>
-
       <View style={styles.content}>
-        <Text style={styles.title}>New password</Text>
-        <Text style={styles.subtitle}>
-          Create a strong password to secure your account
-        </Text>
+        <Text style={styles.title}>Set Your Password</Text>
+        <Text style={styles.subtitle}>Step 2 of 2</Text>
 
         {/* Password */}
-        <View style={styles.inputContainer}>
+        <View style={styles.inputBox}>
           <Ionicons name="lock-closed-outline" size={20} color="#6E26EA" />
           <TextInput
             placeholder="Password"
-            placeholderTextColor="#999"
             secureTextEntry={!showPass}
             style={styles.input}
             value={password}
@@ -118,17 +108,16 @@ export default function NewPasswordScreen({ navigation }) {
             <Ionicons
               name={showPass ? "eye-off-outline" : "eye-outline"}
               size={20}
-              color="#6E26EA"
+              color="#6E26EA" 
             />
           </TouchableOpacity>
         </View>
 
         {/* Confirm */}
-        <View style={styles.inputContainer}>
+        <View style={styles.inputBox}>
           <Ionicons name="lock-closed-outline" size={20} color="#6E26EA" />
           <TextInput
-            placeholder="Confirm password"
-            placeholderTextColor="#999"
+            placeholder="Confirm Password"
             secureTextEntry={!showConfirm}
             style={styles.input}
             value={confirm}
@@ -143,7 +132,7 @@ export default function NewPasswordScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
-        {/* Match (Professional) */}
+        {/* ✅ Match */}
         {confirm.length > 0 && (
           <View style={styles.matchRow}>
             <Ionicons
@@ -162,7 +151,7 @@ export default function NewPasswordScreen({ navigation }) {
           </View>
         )}
 
-        {/* 🔥 BAR */}
+        {/* 🔥 Strength Bar */}
         <View style={styles.barContainer}>
           {[1, 2, 3, 4, 5].map((i) => (
             <View
@@ -206,7 +195,7 @@ export default function NewPasswordScreen({ navigation }) {
             colors={["#6E26EA", "#6E26EA"]}
             style={styles.button}
           >
-            <Text style={styles.buttonText}>Confirm New Password</Text>
+            <Text style={styles.buttonText}>Create Account</Text>
           </LinearGradient>
         </TouchableOpacity>
       </View>
@@ -217,41 +206,33 @@ export default function NewPasswordScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff" },
 
-  backButton: {
+  back: {
     position: "absolute",
     top: 60,
     left: 20,
     zIndex: 10,
   },
 
-  logoContainer: {
-    alignItems: "center",
-    marginTop: 90,
-    marginBottom: 20,
-  },
-
-  logo: {
-    width: 200,
-    height: 120,
-    resizeMode: "contain",
-  },
-
   content: {
     paddingHorizontal: 25,
+    marginTop: 120,
   },
 
   title: {
     fontSize: 24,
-    fontWeight: "bold",
-    marginBottom: 10,
+    fontWeight: "700",
+    textAlign: "center",
   },
 
   subtitle: {
+    fontSize: 13,
     color: "#777",
+    textAlign: "center",
+    marginTop: 8,
     marginBottom: 25,
   },
 
-  inputContainer: {
+  inputBox: {
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1,
@@ -263,9 +244,8 @@ const styles = StyleSheet.create({
 
   input: {
     flex: 1,
-    padding: 12,
     marginLeft: 10,
-    color: "#000",
+    paddingVertical: 12,
   },
 
   matchRow: {
@@ -281,7 +261,6 @@ const styles = StyleSheet.create({
 
   barContainer: {
     flexDirection: "row",
-    justifyContent: "space-between",
     marginBottom: 15,
   },
 
@@ -290,21 +269,21 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: 5,
     marginHorizontal: 3,
-  }, 
+  },
 
   rulesBox: {
-    marginBottom: 20,
+    marginBottom: 15,
   },
 
   ruleRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 6,
+    marginBottom: 5,
   },
 
   ruleText: {
     marginLeft: 8,
-    fontSize: 13,
+    fontSize: 12,
     color: "#777",
   },
 
@@ -316,7 +295,6 @@ const styles = StyleSheet.create({
 
   buttonText: {
     color: "#fff",
-    fontWeight: "bold",
-    fontSize: 16,
+    fontWeight: "600",
   },
-}); 
+});

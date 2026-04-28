@@ -5,6 +5,7 @@ export default function AccountTypeScreen({ navigation }) {
   return (
     <View style={styles.container}>
 
+
       <View style={styles.centerContent}>
         <Image
           source={require("../Images/PHOTO-2025-12-22-22-34-52-removebg-preview.png")}
@@ -70,6 +71,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     letterSpacing: 2,
     marginBottom: 20,
+    fontWeight: "700",
   },
 
   buttonsContainer: {

@@ -1,155 +1,261 @@
-import React from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet , Image } from "react-native";
+import React, { useState } from "react";
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Image,
+} from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, FontAwesome } from "@expo/vector-icons";
+import axios from "axios";
+import { useNavigation } from "@react-navigation/native";
+import * as SecureStore from "expo-secure-store";
 
-export default function LoginScreen({ navigation }) {
+export default function BusLoginScreen({ signIn }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [secure, setSecure] = useState(true); // 👁️ eye state
+
+  const navigation = useNavigation();
+
+  const saveToken = async (token) => {
+    try {
+      await SecureStore.setItemAsync("busToken", token);
+    } catch (e) {
+      console.error("Error saving token:", e);
+    }
+  };
+
+  const handleLogin = async () => {
+    try {
+      const response = await axios.post(
+        "http://localhost:3000/api/auth/login",
+        { email, password }
+      );
+
+      saveToken(response.data.token);
+      signIn(email, password);
+    } catch (error) {
+      console.error("Login error:", error);
+    }
+  };
+
   return (
     <View style={styles.container}>
+
+      {/* Back */}
       <TouchableOpacity
-  onPress={() => navigation.goBack()}
-  style={styles.backButton}
->
-  <Ionicons name="arrow-back" size={28} color="black" />
-</TouchableOpacity>
-
-       <Image
-              source={require("../Images/PHOTO-2025-12-22-22-34-52-removebg-preview.png")}
-              style={styles.logo}
-            />
-
-      <Text style={styles.title}>Welcome</Text>
-      <Text style={styles.subtitle}>
-        Manage bookings, queues, staff, and payments all in one place.
-      </Text>
-
-      <TextInput placeholder="Email address" style={styles.input} />
-      <TextInput placeholder="Password" secureTextEntry style={styles.input} />
-
-      <TouchableOpacity onPress={() => navigation.navigate("ForgotPassword")}>
-        <Text style={styles.link}>Forgot password?</Text>
+        onPress={() => navigation.goBack()}
+        style={styles.backButton}
+      >
+        <Ionicons name="arrow-back" size={26} color="#000" />
       </TouchableOpacity>
 
-      <TouchableOpacity onPress={() => navigation.navigate("busHome")}>
-        <LinearGradient
-          colors={["#7B3FF2", "#5F2EEA"]}
-          style={styles.button}
-        >
+      {/* Logo */}
+      <Image
+        source={require("../Images/PHOTO-2025-12-22-22-34-52-removebg-preview.png")}
+        style={styles.logo}
+      />
+
+      {/* Title */}
+      <Text style={styles.title}>Welcome</Text>
+      <Text style={styles.subtitle}>
+        Manage bookings, staff, queues & payments easily.
+      </Text>
+
+      {/* Email */}
+      <View style={styles.inputContainer}>
+        <Ionicons name="mail-outline" size={20} color="#6E26EA" />
+        <TextInput
+          placeholder="Business email"
+          placeholderTextColor="#999"
+          style={styles.input}
+          value={email}
+          onChangeText={setEmail}
+        />
+      </View>
+
+      {/* Password with 👁️ */}
+      <View style={styles.inputContainer}>
+        <Ionicons name="lock-closed-outline" size={20} color="#6E26EA" />
+        <TextInput
+          placeholder="Password"
+          placeholderTextColor="#999"
+          secureTextEntry={secure}
+          style={styles.input}
+          value={password}
+          onChangeText={setPassword}
+        />
+
+        {/* 👁️ eye */}
+        <TouchableOpacity onPress={() => setSecure(!secure)}>
+          <Ionicons
+            name={secure ? "eye-off-outline" : "eye-outline"}
+            size={20}
+            color="#6E26EA"
+          />
+        </TouchableOpacity>
+      </View>
+
+      {/* Forgot */}
+      <TouchableOpacity onPress={() => navigation.navigate("buspassword")}>
+        <Text style={styles.forgot}>Forgot password?</Text>
+      </TouchableOpacity>
+
+      {/* Button */}
+      <TouchableOpacity onPress={handleLogin}>
+        <LinearGradient colors={["#6E26EA", "#6E26EA"]} style={styles.button}>
           <Text style={styles.buttonText}>Sign In</Text>
         </LinearGradient>
       </TouchableOpacity>
 
- <TouchableOpacity onPress={() => navigation.navigate("busacc")}>
-  <LinearGradient
-          colors={["#7B3FF2", "#5F2EEA"]}
-          style={styles.button}
+      {/* OR Divider */}
+      <View style={styles.orContainer}>
+        <View style={styles.line} />
+        <Text style={styles.or}>or</Text>
+        <View style={styles.line} />
+      </View>
+
+      {/* Google */}
+      <TouchableOpacity style={styles.socialBtn}>
+        <FontAwesome name="google" size={18} color="#30a04a" />
+        <Text style={styles.socialText}>Sign in with Google</Text>
+      </TouchableOpacity>
+
+      {/* Facebook */}
+      <TouchableOpacity style={styles.socialBtn}>
+        <FontAwesome name="facebook" size={18} color="#1877F2" />
+        <Text style={styles.socialText}>Sign in with Facebook</Text>
+      </TouchableOpacity>
+
+      {/* Sign up */}
+      <Text style={styles.signUp}>
+        Don’t have a business account?{" "}
+        <Text
+          style={styles.link}
+          onPress={() => navigation.navigate("busacc")}
         >
-          <Text style={styles.buttonText}>Create Account</Text>
-        </LinearGradient>
-</TouchableOpacity>
-
-      <Text style={styles.or}>or</Text>
-
-      <TouchableOpacity style={styles.social}>
-        <Text>Sign in with Google</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={styles.social}>
-        <Text>Sign in with Facebook</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity onPress={() => navigation.navigate("CreateAccount")}>
-  <Text style={styles.signUp}>
-    Don't have an account?{" "}
-    <Text style={styles.link}>Sign Up</Text>
-  </Text>
-</TouchableOpacity>
+          Create Account
+        </Text>
+      </Text>
 
     </View>
   );
-
-
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    padding: 25,
+    paddingTop: 80,
+    backgroundColor: "#fff",
+  },
 
-  container:{
-    flex:1,
-    padding:25,
-    justifyContent:"center",
-    backgroundColor:"#fff",
-    paddingTop: 5,
+  backButton: {
+    position: "absolute",
+    top: 60,
+    left: 20,
+    zIndex: 10,
   },
 
   logo: {
-  width: 400,
-  height: 200,
-  resizeMode: "contain",
-  alignSelf: "center",
-  marginBottom: 1,
-},
-
-  title:{
-    fontSize:22,
-    fontWeight:"bold",
+    width: 200,
+    height: 140,
+    resizeMode: "contain",
+    alignSelf: "center",
+    marginBottom: 10,
   },
 
-  subtitle:{
-    color:"#777",
-    marginBottom:25
+  title: {
+    fontSize: 26,
+    fontWeight: "bold",
+    marginBottom: 10,
   },
 
-  input:{
-    borderWidth:1,
-    borderColor:"#eee",
-    borderRadius:30,
-    padding:15,
-    marginBottom:15
+  subtitle: {
+    color: "#777",
+    marginBottom: 25,
+    lineHeight: 20,
   },
 
-  link:{
-    color:"#7B3FF2",
-    textAlign:"right",
-    marginBottom:20
+  inputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#eee",
+    borderRadius: 30,
+    paddingHorizontal: 15,
+    marginBottom: 15,
   },
 
-  button:{
-    padding:16,
-    borderRadius:30,
-    alignItems:"center",
-    margin:10,
+  input: {
+    flex: 1,
+    padding: 12,
+    marginLeft: 10,
+    color: "#000",
   },
 
-  buttonText:{
-    color:"#fff",
-    fontWeight:"bold"
+  forgot: {
+    color: "#6E26EA",
+    textAlign: "right",
+    marginBottom: 20,
   },
 
-  or:{
-    textAlign:"center",
-    marginVertical:20,
-    color:"#888"
+  button: {
+    padding: 16,
+    borderRadius: 30,
+    alignItems: "center",
   },
 
-  social:{
-    borderWidth:1,
-    borderColor:"#eee",
-    borderRadius:30,
-    padding:15,
-    alignItems:"center",
-    marginBottom:10
+  buttonText: {
+    color: "#fff",
+    fontWeight: "bold",
+    fontSize: 16,
+  },
+
+  orContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: 20,
+  },
+
+  line: {
+    flex: 1,
+    height: 1,
+    backgroundColor: "#eee",
+  },
+
+  or: {
+    marginHorizontal: 10,
+    color: "#999",
+  },
+
+  socialBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 30,
+    padding: 15,
+    marginBottom: 10,
+    gap: 10,
+  },
+
+  socialText: {
+    fontWeight: "500",
   },
 
   signUp: {
-  textAlign: "center",
-  color: "#777",
-  marginTop: 20,
-},
-  backButton: {
-  position: "absolute",
-  top: 60,
-  left: 20,
-  zIndex: 10
-}, 
+    textAlign: "center",
+    marginTop: 20,
+    color: "#777",
+  },
 
+  link: {
+    color: "#6E26EA",
+    fontWeight: "600",
+  },
 });

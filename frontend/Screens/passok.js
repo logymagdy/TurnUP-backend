@@ -16,7 +16,7 @@ return (
 You can now log in with your new password.
 </Text>
 
-<TouchableOpacity onPress={() => navigation.navigate("buslogin")}>
+<TouchableOpacity onPress={() => navigation.navigate("Buslogin")}>
 <LinearGradient colors={["#7B3FF2","#5F2EEA"]} style={styles.button}>
 <Text style={styles.buttonText}>Back to login</Text>
 </LinearGradient>

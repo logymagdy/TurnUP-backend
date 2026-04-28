@@ -6,57 +6,106 @@ import {
   TouchableOpacity,
   StyleSheet,
   Modal,
+  Image,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import * as ImagePicker from "expo-image-picker";
 
 export default function FillProfile1({ navigation }) {
   const [showModal, setShowModal] = useState(false);
-
   const [gender, setGender] = useState("");
   const [showGender, setShowGender] = useState(false);
-
   const [showDate, setShowDate] = useState(false);
   const [date, setDate] = useState(null);
 
+  // 📸 image
+  const [image, setImage] = useState(null);
+  const [pickerModal, setPickerModal] = useState(false);
+
   const handleContinue = () => {
     setShowModal(true);
-
     setTimeout(() => {
       setShowModal(false);
       navigation.replace("Home");
     }, 3000);
   };
 
+  // 📷 Camera
+  const openCamera = async () => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) return;
+
+    let result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaType.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 1,
+    });
+
+    if (!result.canceled) {
+      setImage(result.assets[0].uri);
+    }
+
+    setPickerModal(false);
+  };
+
+  // 🖼️ Gallery
+  const openGallery = async () => {
+    const permission =
+      await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) return;
+
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaType.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 1,
+    });
+
+    if (!result.canceled) {
+      setImage(result.assets[0].uri);
+    }
+
+    setPickerModal(false);
+  };
+
   return (
     <View style={styles.container}>
-
       {/* Back */}
       <TouchableOpacity
         onPress={() => navigation.goBack()}
         style={styles.backButton}
       >
-        <Ionicons name="arrow-back" size={26} color="#000" />
+        <Ionicons name="arrow-back" size={22} color="#000" />
       </TouchableOpacity>
 
-      {/* Avatar */}
-      <View style={styles.avatarContainer}>
-        <Ionicons name="person" size={50} color="#aaa" />
+      {/* 👤 Avatar */}
+      <View style={styles.avatarWrapper}>
+        {image ? (
+          <Image source={{ uri: image }} style={styles.avatarContainer} />
+        ) : (
+          <View style={styles.avatarContainer}>
+            <Ionicons name="person" size={50} color="#aaa" />
+          </View>
+        )}
 
-        <TouchableOpacity style={styles.editIcon}>
+        {/* ✏️ edit */}
+        <TouchableOpacity
+          style={styles.editIcon}
+          onPress={() => setPickerModal(true)}
+        >
           <Ionicons name="pencil" size={14} color="#fff" />
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.title}>Fill Your Profile</Text>
+      <Text style={styles.title}>Complete Your Profile</Text>
 
       {/* Inputs */}
       <View style={styles.inputsContainer}>
-
-        {/* Name */}
         <TextInput placeholder="Full Name" style={styles.input} />
 
-        {/* Date Picker */}
+        {/* Date */}
         <TouchableOpacity
           style={styles.inputRow}
           onPress={() => setShowDate(true)}
@@ -64,7 +113,7 @@ export default function FillProfile1({ navigation }) {
           <Text style={{ color: date ? "#000" : "#999" }}>
             {date ? date.toLocaleDateString() : "Date of Birth"}
           </Text>
-          <Ionicons name="calendar-outline" size={20} color="#999" />
+          <Ionicons name="calendar-outline" size={20} color="#6E26EA" />
         </TouchableOpacity>
 
         {showDate && (
@@ -79,14 +128,12 @@ export default function FillProfile1({ navigation }) {
           />
         )}
 
-        {/* Email */}
         <TextInput
           placeholder="Email Address"
           style={styles.input}
           keyboardType="email-address"
         />
 
-        {/* 📱 Mobile */}
         <TextInput
           placeholder="Mobile Number"
           style={styles.input}
@@ -94,7 +141,7 @@ export default function FillProfile1({ navigation }) {
           maxLength={11}
         />
 
-        {/* Gender Dropdown */}
+        {/* Gender */}
         <TouchableOpacity
           style={styles.inputRow}
           onPress={() => setShowGender(!showGender)}
@@ -102,7 +149,7 @@ export default function FillProfile1({ navigation }) {
           <Text style={{ color: gender ? "#000" : "#999" }}>
             {gender || "Gender"}
           </Text>
-          <Ionicons name="chevron-down-outline" size={20} color="#999" />
+          <Ionicons name="chevron-down-outline" size={20} color="#6E26EA" />
         </TouchableOpacity>
 
         {showGender && (
@@ -126,7 +173,6 @@ export default function FillProfile1({ navigation }) {
             </TouchableOpacity>
           </View>
         )}
-
       </View>
 
       {/* Button */}
@@ -134,11 +180,34 @@ export default function FillProfile1({ navigation }) {
         <Text style={styles.buttonText}>Continue</Text>
       </TouchableOpacity>
 
-      {/* 🎉 BIG POPUP */}
-      <Modal transparent visible={showModal} animationType="fade">
+      {/* 📸 Picker Modal */}
+      <Modal visible={pickerModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalBox}>
+            <Text style={styles.modalTitle}>Choose Image</Text>
 
+            <TouchableOpacity style={styles.optionBtn} onPress={openCamera}>
+              <Text>Take Photo</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.optionBtn} onPress={openGallery}>
+              <Text>Choose from Gallery</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.optionBtn}
+              onPress={() => setPickerModal(false)}
+            >
+              <Text style={{ color: "red" }}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 🎉 Success Modal */}
+      <Modal transparent visible={showModal} animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.successBox}>
             <View style={styles.checkCircle}>
               <Ionicons name="checkmark" size={50} color="#fff" />
             </View>
@@ -147,15 +216,12 @@ export default function FillProfile1({ navigation }) {
             <Text style={styles.modalText}>
               Your account is ready to use. Redirecting...
             </Text>
-
           </View>
         </View>
       </Modal>
-
     </View>
   );
 }
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -170,24 +236,33 @@ const styles = StyleSheet.create({
     left: 20,
   },
 
-  avatarContainer: {
+  /* 👤 AVATAR */
+  avatarWrapper: {
     alignSelf: "center",
+    position: "relative",
+    marginBottom: 20,
+  },
+
+  avatarContainer: {
     width: 100,
     height: 100,
     borderRadius: 50,
     backgroundColor: "#F3F4F6",
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 20,
   },
 
   editIcon: {
     position: "absolute",
-    bottom: 0,
-    right: 0,
+    bottom: 5,
+    right: 5,
     backgroundColor: "#6C3BFF",
-    padding: 6,
-    borderRadius: 20,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    justifyContent: "center",
+    alignItems: "center",
+    elevation: 4,
   },
 
   title: {
@@ -218,7 +293,7 @@ const styles = StyleSheet.create({
 
   dropdown: {
     backgroundColor: "#fff",
-    borderRadius: 10,
+    borderRadius: 12,
     padding: 10,
     elevation: 3,
   },
@@ -241,15 +316,32 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 
-  /* 🎉 POPUP */
+  /* 📸 IMAGE PICKER MODAL */
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "center",
     alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.5)",
   },
 
   modalBox: {
+    width: 300,
+    backgroundColor: "#fff",
+    borderRadius: 25,
+    padding: 25,
+    alignItems: "center",
+  },
+
+  optionBtn: {
+    padding: 15,
+    width: "100%",
+    alignItems: "center",
+    borderBottomWidth: 1,
+    borderColor: "#eee",
+  },
+
+  /* 🎉 SUCCESS MODAL */
+  successBox: {
     width: 300,
     backgroundColor: "#fff",
     borderRadius: 25,
@@ -272,6 +364,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#6C3BFF",
     marginBottom: 10,
+    textAlign: "center",
   },
 
   modalText: {

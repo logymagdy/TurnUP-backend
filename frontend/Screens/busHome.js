@@ -5,129 +5,135 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Image,
   ScrollView
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 export default function BusHome({ navigation }) {
   return (
-    <ScrollView style={styles.container}>
-
-      {/* Logo */}
- <Image
-         source={require("../Images/PHOTO-2025-12-22-22-34-52-removebg-preview.png")}
-         style={styles.logo}
-       />
-   <TouchableOpacity
-  onPress={() => navigation.goBack()}
-  style={styles.backButton}
->
-  <Ionicons name="arrow-back" size={28} color="black" />
-</TouchableOpacity>
-      {/* Step */}
-      <Text style={styles.step}>Step 1 of 7</Text>
+    <View style={{ flex: 1, backgroundColor: "#F5F5F5" }}>
       
-
-      {/* Dots */}
-      <View style={styles.dotsContainer}>
-        <View style={[styles.dot, styles.activeDot]} />
-        {[...Array(6)].map((_, i) => (
-          <View key={i} style={styles.dot} />
-        ))}
-        
-      </View>
-
-      <Text style={styles.trial}>
-        2- Month Free Trial - No Cards Required
-      </Text>
-
-      {/* Business Identity */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Business Identity</Text>
-
-        <TextInput
-          placeholder="Business Name (e.g Fade Zone Barbershop)"
-          style={styles.input}
-        />
-
-        <View style={styles.uploadContainer}>
-          <View style={styles.profileCircle}>
-            <Ionicons name="person" size={40} color="#aaa" />
-          </View>
-
-          <Text style={styles.uploadText}>
-            Upload Your Logo <Text style={{ color: "#999" }}>(optional)</Text>
-          </Text>
-        </View>
-      </View>
-
-      {/* Business Details */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Business Details</Text>
-
-        <TextInput
-          placeholder="Business Category (Barbershop)"
-          style={styles.input}
-        />
-
-        <Text style={styles.label}>Short description</Text>
-
-        <TextInput
-          placeholder="This helps clients understand your business."
-          style={[styles.input, { height: 80 }]}
-          multiline
-        />
-      </View>
-
-      {/* Address */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Branch Address</Text>
-
-        <View style={styles.locationRow}>
-          <TextInput
-            placeholder="Street, Area, City"
-            style={[styles.input, { flex: 1, marginBottom: 0 }]}
-          />
-
-          <TouchableOpacity style={styles.pinBtn}>
-            <Text style={styles.pinText}>Pin</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Fake Map */}
-        <View style={styles.map} />
-      </View>
-
-      {/* Button */}
-      <TouchableOpacity style={styles.button}>
-        <Text style={styles.buttonText}>Save & Continue</Text>
+      {/* Back Button */}
+      <TouchableOpacity
+        onPress={() => navigation.goBack()}
+        style={styles.backButton}
+      >
+        <Ionicons name="arrow-back" size={24} color="#000" />
       </TouchableOpacity>
 
-    </ScrollView>
+      <ScrollView contentContainerStyle={styles.container}>
+
+        {/* 🔥 Title */}
+        <Text style={styles.title}>Let’s Build Your Business</Text>
+
+        
+
+        {/* Step */}
+        <Text style={styles.step}>Step 1 of 7</Text>
+
+        {/* Dots */}
+        <View style={styles.dotsContainer}>
+          <View style={[styles.dot, styles.activeDot]} />
+          {[...Array(6)].map((_, i) => (
+            <View key={i} style={styles.dot} />
+          ))}
+        </View>
+
+        <Text style={styles.trial}>
+          2- Month Free Trial - No Cards Required
+        </Text>
+
+        {/* Business Identity */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Business Identity</Text>
+
+          <TextInput
+            placeholder="Business Name (e.g Fade Zone Barbershop)"
+            style={styles.input}
+          />
+
+          <View style={styles.uploadContainer}>
+            <View style={styles.profileCircle}>
+              <Ionicons name="person" size={40} color="#aaa" />
+            </View>
+
+            <Text style={styles.uploadText}>
+              Upload Your Logo <Text style={{ color: "#999" }}>(optional)</Text>
+            </Text>
+          </View>
+        </View>
+
+        {/* Business Details */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Business Details</Text>
+
+          <TextInput
+            placeholder="Business Category (Barbershop)"
+            style={styles.input}
+          />
+
+          <Text style={styles.label}>Short description</Text>
+
+          <TextInput
+            placeholder="This helps clients understand your business."
+            style={[styles.input, { height: 80 }]}
+            multiline
+          />
+        </View>
+
+        {/* Address */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Branch Address</Text>
+
+          <View style={styles.locationRow}>
+            <TextInput
+              placeholder="Street, Area, City"
+              style={[styles.input, { flex: 1, marginBottom: 0 }]}
+            />
+
+            <TouchableOpacity style={styles.pinBtn}>
+              <Text style={styles.pinText}>Pin</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.map} />
+        </View>
+
+        {/* Button */}
+        <TouchableOpacity style={styles.button}>
+          <Text style={styles.buttonText}>Save & Continue</Text>
+        </TouchableOpacity>
+
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
 
   container: {
-    flex: 1,
-    backgroundColor: "#F5F5F5",
     padding: 20,
+    paddingTop: 100,
   },
 
-  logo: {
-   width: 300,
-  height: 200,
-  resizeMode: "contain",
-  alignSelf: "center",
-  marginBottom: 1,
+  backButton: {
+    position: "absolute",
+    top: 60,
+    left: 20,
+    zIndex: 10,
   },
 
+  title: {
+    fontSize: 22,
+    fontWeight: "700",
+    textAlign: "center",
+    marginBottom: 5,
+  },
+
+  
   step: {
     textAlign: "center",
     fontSize: 16,
-    marginTop: -40,
   },
 
   dotsContainer: {
@@ -239,10 +245,4 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "600",
   },
-   backButton: {
-  position: "absolute",
-  top: 60,
-  left: 20,
-  zIndex: 10
-},
 });

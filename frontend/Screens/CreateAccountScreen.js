@@ -1,124 +1,210 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Image,
+  Animated,
 } from "react-native";
 import { Ionicons, FontAwesome } from "@expo/vector-icons";
 
 export default function CreateAccountScreen({ navigation }) {
   const [secure, setSecure] = useState(true);
+  const [password, setPassword] = useState("");
+
+  const scaleAnims = {
+    length: useRef(new Animated.Value(1)).current,
+    upper: useRef(new Animated.Value(1)).current,
+    lower: useRef(new Animated.Value(1)).current,
+    number: useRef(new Animated.Value(1)).current,
+    symbol: useRef(new Animated.Value(1)).current,
+  };
+
+  const animate = (anim) => {
+    Animated.sequence([
+      Animated.timing(anim, { toValue: 1.3, duration: 150, useNativeDriver: true }),
+      Animated.timing(anim, { toValue: 1, duration: 150, useNativeDriver: true }),
+    ]).start();
+  };
+
+  const hasUpper = /[A-Z]/.test(password);
+  const hasLower = /[a-z]/.test(password);
+  const hasNumber = /[0-9]/.test(password);
+  const hasSymbol = /[!@#$%^&*]/.test(password);
+  const hasLength = password.length >= 8;
+
+  useEffect(() => {
+    if (password.length > 0) {
+      if (hasLength) animate(scaleAnims.length);
+      if (hasUpper) animate(scaleAnims.upper);
+      if (hasLower) animate(scaleAnims.lower);
+      if (hasNumber) animate(scaleAnims.number);
+      if (hasSymbol) animate(scaleAnims.symbol);
+    }
+  }, [password]);
+
+  const passedRules = [
+    hasUpper,
+    hasLower,
+    hasNumber,
+    hasSymbol,
+    hasLength,
+  ].filter(Boolean).length;
+
+  const getBarColor = () => {
+    if (passedRules <= 2) return "#FF4D4D";
+    if (passedRules <= 4) return "#FFA500";
+    return "#4CAF50";
+  };
 
   return (
     <View style={styles.container}>
-
       {/* Back */}
-      <TouchableOpacity
-        onPress={() => navigation.goBack()}
-        style={styles.backButton}
-      >
-        <Ionicons name="arrow-back" size={26} color="black" />
+      <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+        <Ionicons name="arrow-back" size={24} color="#000" />
       </TouchableOpacity>
 
-      {/* Logo */}
-      <Image
-        source={require("../Images/PHOTO-2025-12-22-22-34-52-removebg-preview.png")}
-        style={styles.logo}
-      />
-
-      {/* Title */}
-      <Text style={styles.title}>Create an account</Text>
-      <Text style={styles.subtitle}>
-        Enter your details below to create your account
-      </Text>
-
-      {/* Name */}
-      <View style={styles.inputContainer}>
-        <Ionicons name="person-outline" size={20} color="#999" />
-        <TextInput placeholder="Name" style={styles.textInput} />
-      </View>
-
-      {/* Email */}
-      <View style={styles.inputContainer}>
-        <Ionicons name="mail-outline" size={20} color="#999" />
-        <TextInput placeholder="Email address" style={styles.textInput} />
-      </View>
-
-      {/* Phone */}
-      <View style={styles.inputContainer}>
-        <Ionicons name="call-outline" size={20} color="#999" />
-        <TextInput placeholder="Mobile number" style={styles.textInput} />
-      </View>
-
-      {/* Password */}
-      <View style={styles.inputContainer}>
-        <Ionicons name="lock-closed-outline" size={20} color="#999" />
-        <TextInput
-          placeholder="Password"
-          secureTextEntry={secure}
-          style={styles.textInput}
-        />
-        <TouchableOpacity onPress={() => setSecure(!secure)}>
-          <Ionicons
-            name={secure ? "eye-off-outline" : "eye-outline"}
-            size={20}
-            color="#999"
-          />
-        </TouchableOpacity>
-      </View>
-
-      {/* Terms */}
-      <Text style={styles.terms}>
-        By signing up you agree to our{" "}
-        <Text style={styles.link}>Terms</Text> and{" "}
-        <Text style={styles.link}>Privacy Policy</Text>
-      </Text>
-
-      {/* Sign Up */}
-      <TouchableOpacity
-        style={styles.button}
-        onPress={() => navigation.navigate("FillProfile1")}
-      >
-        <Text style={styles.buttonText}>Sign up</Text>
-      </TouchableOpacity>
-
-      {/* OR Divider */}
-      <View style={styles.dividerContainer}>
-        <View style={styles.line} />
-        <Text style={styles.orText}>or</Text>
-        <View style={styles.line} />
-      </View>
-
-      {/* Google */}
-      <TouchableOpacity style={styles.socialBtn}>
-        <FontAwesome name="google" size={18} color="#30a04a" />
-        <Text style={styles.socialText}>Sign in with Google</Text>
-      </TouchableOpacity>
-
-      {/* Sign In */}
-      <Text style={styles.signIn}>
-        Already have an account?{" "}
-        <Text
-          style={styles.link}
-          onPress={() => navigation.navigate("Login")}
-        >
-          Sign in
+      <View style={styles.content}>
+        <Text style={styles.title}>Create an account</Text>
+        <Text style={styles.subtitle}>
+          Enter your details below to create your account
         </Text>
-      </Text>
 
+        {/* Username */}
+        <View style={styles.inputContainer}>
+          <Ionicons name="person-outline" size={20} color="#6E26EA" />
+          <TextInput
+            placeholder="Username"
+            placeholderTextColor="#999"
+            style={styles.input}
+          />
+        </View>
+
+        {/* Email */}
+        <View style={styles.inputContainer}>
+          <Ionicons name="mail-outline" size={20} color="#6E26EA" />
+          <TextInput
+            placeholder="Email address"
+            placeholderTextColor="#999"
+            style={styles.input}
+          />
+        </View>
+
+        {/* Phone */}
+        <View style={styles.inputContainer}>
+          <Ionicons name="call-outline" size={20} color="#6E26EA" />
+          <TextInput
+            placeholder="Mobile number"
+            placeholderTextColor="#999"
+            style={styles.input}
+          />
+        </View>
+
+        {/* Password */}
+        <View style={styles.inputContainer}>
+          <Ionicons name="lock-closed-outline" size={20} color="#6E26EA" />
+          <TextInput
+            placeholder="Password"
+            placeholderTextColor="#999"
+            secureTextEntry={secure}
+            style={styles.input}
+            value={password}
+            onChangeText={setPassword}
+          />
+          <TouchableOpacity onPress={() => setSecure(!secure)}>
+            <Ionicons
+              name={secure ? "eye-off-outline" : "eye-outline"}
+              size={20}
+              color="#6E26EA"
+            />
+          </TouchableOpacity>
+        </View>
+
+        {/* 🔥 Strength Bar (تظهر بس لما تكتبي) */}
+        {password.length > 0 && (
+          <View style={styles.barContainer}>
+            {[1, 2, 3, 4, 5].map((i) => (
+              <View
+                key={i}
+                style={[
+                  styles.bar,
+                  {
+                    backgroundColor:
+                      i <= passedRules ? getBarColor() : "#eee",
+                  },
+                ]}
+              />
+            ))}
+          </View>
+        )}
+
+        {/* 🔥 Rules (تظهر بس لما تكتبي) */}
+        {password.length > 0 && (
+          <View style={styles.rulesBox}>
+            {[
+              { cond: hasLength, text: "At least 8 characters", anim: scaleAnims.length },
+              { cond: hasUpper, text: "One uppercase letter", anim: scaleAnims.upper },
+              { cond: hasLower, text: "One lowercase letter", anim: scaleAnims.lower },
+              { cond: hasNumber, text: "One number", anim: scaleAnims.number },
+              { cond: hasSymbol, text: "One special character (!@#$)", anim: scaleAnims.symbol },
+            ].map((rule, index) => (
+              <View key={index} style={styles.ruleRow}>
+                <Animated.View style={{ transform: [{ scale: rule.anim }] }}>
+                  <Ionicons
+                    name={rule.cond ? "checkmark-circle" : "close-circle"}
+                    size={18}
+                    color={rule.cond ? "#4CAF50" : "#ccc"}
+                  />
+                </Animated.View>
+                <Text style={styles.ruleText}>{rule.text}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Terms */}
+        <Text style={styles.terms}>
+          By signing up you agree to our{" "}
+          <Text style={styles.link}>Terms</Text> and{" "}
+          <Text style={styles.link}>Privacy Policy</Text>
+        </Text>
+
+        <TouchableOpacity
+          style={styles.button}
+          onPress={() => navigation.navigate("FillProfile1")}
+        >
+          <Text style={styles.buttonText}>Sign up</Text>
+        </TouchableOpacity>
+
+        {/* Divider */}
+        <View style={styles.dividerContainer}>
+          <View style={styles.line} />
+          <Text style={styles.orText}>or</Text>
+          <View style={styles.line} />
+        </View>
+
+        {/* Google */}
+        <TouchableOpacity style={styles.socialBtn}>
+          <FontAwesome name="google" size={18} color="#30a04a" />
+          <Text style={styles.socialText}>Sign in with Google</Text>
+        </TouchableOpacity>
+
+        {/* Sign In */}
+        <Text style={styles.signIn}>
+          Already have an account?{" "}
+          <Text style={styles.link} onPress={() => navigation.navigate("Login")}>
+            Sign in
+          </Text>
+        </Text>
+      </View>
     </View>
   );
 }
-
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#fff",
-    paddingHorizontal: 25,
-    paddingTop: 60,
+  container: { 
+    flex: 1, 
+    backgroundColor: "#fff" 
   },
 
   backButton: {
@@ -128,12 +214,9 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
 
-  logo: {
-    width: 200,
-    height: 150,
-    resizeMode: "contain",
-    alignSelf: "center",
-    marginBottom: 20,
+  content: {
+    paddingHorizontal: 25,
+    marginTop: 120,
   },
 
   title: {
@@ -146,26 +229,58 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#777",
     textAlign: "center",
-    marginTop: 5,
+    marginTop: 10,
     marginBottom: 25,
   },
 
   inputContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F3F4F6",
-    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#eee",
+    borderRadius: 30,
     paddingHorizontal: 15,
-    paddingVertical: 14,
-    marginBottom: 12,
+    marginBottom: 15,
   },
 
-  textInput: {
+  input: {
     flex: 1,
     marginLeft: 10,
-    fontSize: 14,
+    paddingVertical: 12,
+    color: "#000",
   },
 
+  /* 🔥 PASSWORD BAR */
+  barContainer: {
+    flexDirection: "row",
+    marginBottom: 10,
+  },
+
+  bar: {
+    flex: 1,
+    height: 5,
+    marginHorizontal: 2,
+    borderRadius: 5,
+  },
+
+  /* 🔥 RULES */
+  rulesBox: {
+    marginBottom: 15,
+  },
+
+  ruleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 5,
+  },
+
+  ruleText: {
+    marginLeft: 8,
+    fontSize: 12,
+    color: "#777",
+  },
+
+  /* TERMS */
   terms: {
     fontSize: 12,
     color: "#777",
@@ -174,24 +289,24 @@ const styles = StyleSheet.create({
   },
 
   link: {
-    color: "#6C3BFF",
+    color: "#6E26EA",
     fontWeight: "600",
   },
 
+  /* BUTTON */
   button: {
-    backgroundColor: "#6C3BFF",
+    backgroundColor: "#6E26EA",
     padding: 16,
     borderRadius: 30,
     alignItems: "center",
-    marginTop: 5,
   },
 
   buttonText: {
     color: "#fff",
     fontWeight: "600",
-    fontSize: 15,
   },
 
+  /* DIVIDER */
   dividerContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -207,12 +322,11 @@ const styles = StyleSheet.create({
   orText: {
     marginHorizontal: 10,
     color: "#999",
-    fontSize: 12,
   },
 
+  /* GOOGLE BUTTON */
   socialBtn: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
     borderColor: "#ddd",
@@ -222,14 +336,12 @@ const styles = StyleSheet.create({
   },
 
   socialText: {
-    fontSize: 14,
-    color: "#333",
     fontWeight: "500",
   },
 
   signIn: {
     textAlign: "center",
-    color: "#777",
     marginTop: 20,
+    color: "#777",
   },
 });

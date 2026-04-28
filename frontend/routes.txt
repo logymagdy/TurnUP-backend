@@ -24,6 +24,10 @@
         <Stack.Screen name="Favorites" component={FavoritesScreen} />
         <Stack.Screen name="Search" component={SearchScreen} />
 
+        <Stack.Screen name="Booking" component={BookingScreen} />
+        <Stack.Screen name="Inbox" component={InboxScreen} />
+        <Stack.Screen name="Profile" component={ProfileScreen} />
+
         <Stack.Screen name="OnboardingMen" component={OnboardingScreenMen} />
         <Stack.Screen name="onboardingbus" component={onboardingbus} />
         <Stack.Screen name="buslogin" component={buslogin} />

@@ -6,41 +6,41 @@ import {
   FlatList,
   Image,
   TouchableOpacity,
-  Dimensions
+  Dimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-const { width } = Dimensions.get("window");
+const { width, height } = Dimensions.get("window");
 
 const slides = [
   {
     id: "1",
     image: require("../Images/woman-getting-treatment-hairdresser-shop.jpg"),
     title: "Discover Top Beauty Salons Easily",
-    text: "Find the best beauty salons and book your favorite services in seconds."
+    text: "Find the best beauty salons and book your favorite services in seconds.",
   },
   {
     id: "2",
     image: require("../Images/PHOTO-2026-03-10-01-29-40 2.jpg"),
     title: "Meet Professional Beauty Experts",
-    text: "Explore trusted hairstylists, makeup artists, and skincare specialists near you."
+    text: "Explore trusted hairstylists, makeup artists, and skincare specialists near you.",
   },
   {
     id: "3",
     image: require("../Images/prepare-hairdresser-makeup-artist-before-party.jpg"),
     title: "Find The Perfect Beauty Service",
-    text: "Browse hair, nails, makeup, and skincare services tailored for you."
+    text: "Browse hair, nails, makeup, and skincare services tailored for you.",
   },
   {
     id: "4",
-    image: require("../Images/PHOTO-2026-03-10-01-29-40.jpg"),
+    image: require("../Images/woman-having-hair-treatment-latino-hair-salon.jpg"),
     title: "Book Your Appointment Instantly",
-    text: "Reserve your spot online and skip the waiting time."
-  }
+    text: "Reserve your spot online and skip the waiting time.",
+  },
 ];
 
 export default function OnboardingScreen({ navigation }) {
-
   const [currentIndex, setCurrentIndex] = useState(0);
   const ref = useRef();
 
@@ -50,14 +50,14 @@ export default function OnboardingScreen({ navigation }) {
     );
     setCurrentIndex(index);
   };
-  
-const nextSlide = () => {
-  if (currentIndex < slides.length - 1) {
-    ref.current.scrollToIndex({ index: currentIndex + 1 });
-  } else {
-    navigation.replace("Login");
-  }
-};
+
+  const nextSlide = () => {
+    if (currentIndex < slides.length - 1) {
+      ref.current.scrollToIndex({ index: currentIndex + 1 });
+    } else {
+      navigation.replace("Login");
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -67,7 +67,7 @@ const nextSlide = () => {
         onPress={() => navigation.goBack()}
         style={styles.backButton}
       >
-        <Ionicons name="arrow-back" size={28} color="white" />
+        <Ionicons name="arrow-back" size={22} color="black" />
       </TouchableOpacity>
 
       <FlatList
@@ -79,61 +79,50 @@ const nextSlide = () => {
         onMomentumScrollEnd={updateIndex}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-
           <View style={styles.slide}>
 
+            {/* IMAGE */}
             <Image source={item.image} style={styles.image} />
 
-            <Text style={styles.title}>
-              {item.title}
-            </Text>
+            {/* CARD */}
+            <SafeAreaView style={styles.card} edges={['bottom']}>
+              <Text style={styles.title}>{item.title}</Text>
+              <Text style={styles.text}>{item.text}</Text>
 
-            <Text style={styles.text}>
-              {item.text}
-            </Text>
+              {/* dots */}
+              <View style={styles.dotsContainer}>
+                {slides.map((_, index) => (
+                  <View
+                    key={index}
+                    style={[
+                      styles.dot,
+                      currentIndex === index && styles.activeDot,
+                    ]}
+                  />
+                ))}
+              </View>
+
+              {/* button */}
+              <TouchableOpacity style={styles.button} onPress={nextSlide}>
+                <Text style={styles.buttonText}>
+                  {currentIndex === slides.length - 1
+                    ? "Get Started"
+                    : "Next"}
+                </Text>
+              </TouchableOpacity>
+
+              {/* sign in */}
+              <TouchableOpacity onPress={() => navigation.navigate("Login")}>
+                <Text style={styles.signIn}>
+                  Already have an account?{" "}
+                  <Text style={styles.link}>Sign In</Text>
+                </Text>
+              </TouchableOpacity>
+            </SafeAreaView>
 
           </View>
         )}
       />
-
-      {/* 🔥 الجزء اللي تحت كله */}
-      <View style={styles.bottomSection}>
-
-        {/* dots */}
-        <View style={styles.dotsContainer}>
-          {slides.map((_, index) => (
-            <View
-              key={index}
-              style={[
-                styles.dot,
-                currentIndex === index && styles.activeDot
-              ]}
-            />
-          ))}
-        </View>
-
-        {/* next button */}
-        <TouchableOpacity
-          style={styles.button}
-          onPress={nextSlide}
-        >
-          <Text style={styles.buttonText}>
-            {currentIndex === slides.length - 1
-              ? "Get Started"
-              : "Next"}
-          </Text>
-        </TouchableOpacity>
-
-        {/* sign in */}
-        <TouchableOpacity onPress={() => navigation.navigate("Login")}>
-          <Text style={styles.signIn}>
-            Already have an account?{" "}
-            <Text style={styles.link}>Sign In</Text>
-          </Text>
-        </TouchableOpacity>
-
-      </View>
-
     </View>
   );
 }
@@ -142,51 +131,57 @@ const styles = StyleSheet.create({
 
   container: {
     flex: 1,
-    backgroundColor: "#fff",
-    alignItems: "center"
+    backgroundColor: "#000",
   },
 
   slide: {
     width,
-    alignItems: "center"
+    flex: 1,
   },
 
   image: {
-    width: width,
-    height: 500,
-    resizeMode: "cover"
+    width: "100%",
+    height: height * 0.65,
+    resizeMode: "cover",
+  },
+
+  card: {
+    position: "absolute",
+    bottom: 0, // ✅ بقى full تحت
+    width: "100%",
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    paddingHorizontal: 20,
+    paddingTop: 60,
+    paddingBottom: 35,
+    alignItems: "center",
+
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 10,
   },
 
   title: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: "700",
     textAlign: "center",
-    marginTop: 25,
-    paddingHorizontal: 30
+    color: "#000", // 👈 مهم عشان الخلفية بقت white
   },
 
   text: {
     fontSize: 14,
-    color: "#777",
+    color: "#555",
     textAlign: "center",
     marginTop: 10,
-    paddingHorizontal: 50,
-    lineHeight: 20
-  },
-
-
-  bottomSection: {
-    position: "absolute",
-    bottom: 95, 
-    width: "100%",
-    alignItems: "center",
+    lineHeight: 20,
   },
 
   dotsContainer: {
     flexDirection: "row",
     justifyContent: "center",
-    marginBottom: 30
-
+    marginVertical: 20,
   },
 
   dot: {
@@ -198,39 +193,40 @@ const styles = StyleSheet.create({
   },
 
   activeDot: {
-    backgroundColor: "#6C3BFF",
-    width: 20
+    backgroundColor: "#6E26EA",
+    width: 20,
   },
 
   button: {
-    width: "85%",
-    backgroundColor: "#6C3BFF",
+    width: "100%",
+    backgroundColor: "#6E26EA",
     paddingVertical: 16,
-    borderRadius: 35,
+    borderRadius: 30,
     alignItems: "center",
-    marginBottom: 10
   },
 
   buttonText: {
     color: "#fff",
     fontSize: 16,
-    fontWeight: "600"
+    fontWeight: "600",
   },
 
   signIn: {
     color: "#777",
+    marginTop: 15,
+    textAlign: "center",
   },
 
   link: {
-    color: "#6C3BFF",
+    color: "#6E26EA",
     fontWeight: "600",
   },
 
   backButton: {
     position: "absolute",
-    top: 60,
+    top: 50,
     left: 20,
-    zIndex: 10
-  }
+    zIndex: 10,
+  },
 
 });

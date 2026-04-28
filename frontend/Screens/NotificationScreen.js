@@ -1,6 +1,7 @@
 import React from "react";
 import { View, Text, StyleSheet, FlatList, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import AppHeader from "../components/AppHeader";
 
 const data = [
   { id: "1", title: "Reminder!", desc: "Get ready for your appointment at 9am", time: "Just now", section: "Today" },
@@ -28,15 +29,8 @@ export default function NotificationScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
+       <AppHeader title="Notifications" />
       
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.navigate("Home")}>
-          <Ionicons name="arrow-back" size={22} />
-        </TouchableOpacity>
-
-        <Text style={styles.headerTitle}>Notifications</Text>
-      </View>
 
       <FlatList
         data={data}

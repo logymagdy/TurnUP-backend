@@ -1,6 +1,16 @@
 {
-  "plugins": [
-    "@react-native-community/datetimepicker",
-    "expo-secure-store"
-  ]
+  "expo": {
+    "plugins": [
+      "@react-native-community/datetimepicker",
+      "expo-secure-store",
+      "expo-font",
+
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow location to show nearby salons"
+        }
+      ]
+    ]
+  }
 }
