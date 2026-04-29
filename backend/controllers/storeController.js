@@ -1,16 +1,131 @@
 const Store = require("../models/storeModel");
 const User = require("../models/userModel");
-// Create Store
+const { success, error } = require("../utils/responseHandler");
+
+// ─── ONBOARDING WIZARD ────────────────────────────────────────────────────────
+
+exports.registerStoreBusiness = async (req, res) => {
+  try {
+    const { storeName, storeType, location, businessLicense, shopPhotos } = req.body;
+
+    const existingStore = await Store.findOne({ owner: req.user.id });
+    if (existingStore)
+      return res.status(400).json({ message: "Already registered" });
+
+    const newStore = new Store({
+      owner: req.user.id,
+      storeName,
+      storeType,
+      location,
+      approvalStatus: "PENDING",
+      approvalDocuments: { businessLicense, shopPhotos },
+    });
+
+    await newStore.save();
+    await User.findByIdAndUpdate(req.user.id, { storeId: newStore._id });
+
+    res.status(201).json({ message: "Submitted for approval", store: newStore });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.completeBusinessProfile = async (req, res) => {
+  try {
+    const { storeName, storeType, location, phone, logo } = req.body;
+
+    if (storeType && !["barbershop", "beautySalon"].includes(storeType))
+      return res.status(400).json({ message: "Invalid Store Type" });
+
+    const store = await Store.findOneAndUpdate(
+      { owner: req.user.id },
+      { storeName, storeType, location, phone, logo },
+      { new: true, upsert: true }
+    );
+
+    await User.findByIdAndUpdate(req.user.id, { storeId: store._id });
+    res.json({ success: true, store });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.updateBusinessSetup = async (req, res) => {
+  try {
+    const store = await Store.findOneAndUpdate(
+      { owner: req.user.id },
+      { $set: req.body },
+      { new: true, runValidators: true }
+    );
+
+    if (!store) return res.status(404).json({ message: "Store not found" });
+    res.json({ success: true, message: "Setup saved", store });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.addStaffMember = async (req, res) => {
+  try {
+    const { name, age, role, servicesHandled } = req.body;
+    res.json({ success: true, message: "Staff member added to setup list" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.finishStoreSetup = async (req, res) => {
+  try {
+    const { loyaltyProgram, paymentSetup } = req.body;
+
+    const store = await Store.findOneAndUpdate(
+      { owner: req.user.id },
+      { $set: { loyaltyProgram, paymentSetup, approvalStatus: "PENDING" } },
+      { new: true }
+    );
+
+    if (!store) return res.status(404).json({ message: "Store not found" });
+    res.json({ success: true, message: "Setup complete!", store });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// ─── DASHBOARD OPERATIONS ─────────────────────────────────────────────────────
+
+exports.toggleWorkDay = async (req, res) => {
+  try {
+    const { isActive } = req.body;
+
+    const store = await Store.findOneAndUpdate(
+      { owner: req.user.id },
+      { isOpen: isActive },
+      { new: true }
+    );
+
+    if (!store) return res.status(404).json({ message: "Store not found" });
+
+    res.json({
+      success: true,
+      message: isActive ? "Work day started!" : "Work day ended.",
+      store,
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// ─── STORE MANAGEMENT ─────────────────────────────────────────────────────────
+
 exports.createStore = async (req, res) => {
   try {
     const existing = await Store.findOne({ owner: req.user.id });
     if (existing)
-      return res.status(400).json({ message: "Store already exists" });
+      return res.status(400).json({ message: "You already have a store" });
 
     const store = new Store({ owner: req.user.id, ...req.body });
     await store.save();
 
-    // Link storeId to provider user
     await User.findByIdAndUpdate(req.user.id, { storeId: store._id });
 
     res.status(201).json({ message: "Store created successfully", store });
@@ -19,12 +134,16 @@ exports.createStore = async (req, res) => {
   }
 };
 
-// Get Store
 exports.getStore = async (req, res) => {
   try {
-    const store = await Store.findOne({ owner: req.user.id })
-      .populate("owner", "name email")
-      .populate("stylists", "name email")
+    const query =
+      req.user.role === "ADMIN"
+        ? { _id: req.params.id }
+        : { owner: req.user.id };
+
+    const store = await Store.findOne(query)
+      .populate("owner", "name email phone")
+      .populate("stylists", "name email instapayNumber")
       .populate("receptionists", "name email");
 
     if (!store) return res.status(404).json({ message: "Store not found" });
@@ -34,13 +153,12 @@ exports.getStore = async (req, res) => {
   }
 };
 
-// Update Store
 exports.updateStore = async (req, res) => {
   try {
     const store = await Store.findOneAndUpdate(
       { owner: req.user.id },
       req.body,
-      { new: true }
+      { new: true, runValidators: true }
     );
     if (!store) return res.status(404).json({ message: "Store not found" });
     res.json({ message: "Store updated successfully", store });
@@ -49,7 +167,6 @@ exports.updateStore = async (req, res) => {
   }
 };
 
-// Add Stylist
 exports.addStylist = async (req, res) => {
   try {
     const { stylistId } = req.body;
@@ -61,8 +178,8 @@ exports.addStylist = async (req, res) => {
     const store = await Store.findOne({ owner: req.user.id });
     if (!store) return res.status(404).json({ message: "Store not found" });
 
-    if (store.stylists.includes(stylistId))
-      return res.status(400).json({ message: "Stylist already in store" });
+    if (store.stylists.map(String).includes(String(stylistId)))
+      return res.status(400).json({ message: "Stylist already added" });
 
     store.stylists.push(stylistId);
     await store.save();
@@ -75,7 +192,26 @@ exports.addStylist = async (req, res) => {
   }
 };
 
-// Add Receptionist
+exports.removeStylist = async (req, res) => {
+  try {
+    const { stylistId } = req.params;
+
+    const store = await Store.findOne({ owner: req.user.id });
+    if (!store) return res.status(404).json({ message: "Store not found" });
+
+    store.stylists = store.stylists.filter(
+      (id) => String(id) !== String(stylistId)
+    );
+    await store.save();
+
+    await User.findByIdAndUpdate(stylistId, { storeId: null });
+
+    res.json({ message: "Stylist removed successfully" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 exports.addReceptionist = async (req, res) => {
   try {
     const { receptionistId } = req.body;
@@ -87,8 +223,8 @@ exports.addReceptionist = async (req, res) => {
     const store = await Store.findOne({ owner: req.user.id });
     if (!store) return res.status(404).json({ message: "Store not found" });
 
-    if (store.receptionists.includes(receptionistId))
-      return res.status(400).json({ message: "Receptionist already in store" });
+    if (store.receptionists.map(String).includes(String(receptionistId)))
+      return res.status(400).json({ message: "Receptionist already added" });
 
     store.receptionists.push(receptionistId);
     await store.save();
@@ -101,11 +237,32 @@ exports.addReceptionist = async (req, res) => {
   }
 };
 
-// Get Stylists
+exports.removeReceptionist = async (req, res) => {
+  try {
+    const { receptionistId } = req.params;
+
+    const store = await Store.findOne({ owner: req.user.id });
+    if (!store) return res.status(404).json({ message: "Store not found" });
+
+    store.receptionists = store.receptionists.filter(
+      (id) => String(id) !== String(receptionistId)
+    );
+    await store.save();
+
+    await User.findByIdAndUpdate(receptionistId, { storeId: null });
+
+    res.json({ message: "Receptionist removed successfully" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 exports.getStylists = async (req, res) => {
   try {
-    const store = await Store.findOne({ owner: req.user.id })
-      .populate("stylists", "name email");
+    const store = await Store.findOne({ owner: req.user.id }).populate(
+      "stylists",
+      "name email instapayNumber loyaltyTier"
+    );
     if (!store) return res.status(404).json({ message: "Store not found" });
     res.json(store.stylists);
   } catch (err) {
@@ -113,14 +270,170 @@ exports.getStylists = async (req, res) => {
   }
 };
 
-// Get Receptionists
 exports.getReceptionists = async (req, res) => {
   try {
-    const store = await Store.findOne({ owner: req.user.id })
-      .populate("receptionists", "name email");
+    const store = await Store.findOne({ owner: req.user.id }).populate(
+      "receptionists",
+      "name email phone"
+    );
     if (!store) return res.status(404).json({ message: "Store not found" });
     res.json(store.receptionists);
   } catch (err) {
     res.status(500).json({ message: err.message });
+  }
+};
+
+exports.addService = async (req, res) => {
+  try {
+    const store = await Store.findOne({ owner: req.user.id });
+    if (!store) return res.status(404).json({ message: "Store not found" });
+
+    store.services.push(req.body);
+    await store.save();
+
+    res.status(201).json({ message: "Service added", services: store.services });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.updateService = async (req, res) => {
+  try {
+    const store = await Store.findOne({ owner: req.user.id });
+    if (!store) return res.status(404).json({ message: "Store not found" });
+
+    const service = store.services.id(req.params.serviceId);
+    if (!service) return res.status(404).json({ message: "Service not found" });
+
+    Object.assign(service, req.body);
+    await store.save();
+
+    res.json({ message: "Service updated", service });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.deleteService = async (req, res) => {
+  try {
+    const store = await Store.findOne({ owner: req.user.id });
+    if (!store) return res.status(404).json({ message: "Store not found" });
+
+    store.services = store.services.filter(
+      (s) => String(s._id) !== String(req.params.serviceId)
+    );
+    await store.save();
+
+    res.json({ message: "Service deleted" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// ─── CLIENT DISCOVERY ─────────────────────────────────────────────────────────
+
+exports.getPublicStore = async (req, res) => {
+  try {
+    const store = await Store.findById(req.params.storeId)
+      .select("storeName storeType location bio logo services workingHours offDays seats isOpen status approvalStatus stylists")
+      .populate("stylists", "name");
+
+    if (!store) return res.status(404).json({ message: "Store not found" });
+    if (store.approvalStatus !== "APPROVED")
+      return res.status(403).json({ message: "Store is not available" });
+
+    res.json(store);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.getAllStores = async (req, res) => {
+  try {
+    const stores = await Store.find({
+      approvalStatus: "APPROVED",
+      status: "ACTIVE",
+    }).select("storeName storeType location bio logo services workingHours isOpen");
+
+    res.json(stores);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.searchStores = async (req, res) => {
+  try {
+    const { keyword, type, location } = req.query;
+
+    const query = { approvalStatus: "APPROVED", status: "ACTIVE" };
+
+    if (keyword)
+      query.storeName = { $regex: keyword, $options: "i" };
+    if (type)
+      query.storeType = type;
+    if (location)
+      query.location = { $regex: location, $options: "i" };
+
+    const stores = await Store.find(query)
+      .select("storeName storeType location bio logo services workingHours isOpen")
+      .limit(50);
+
+    return success(res, "Stores fetched successfully", stores);
+  } catch (err) {
+    return error(res, "Search failed", 500);
+  }
+};
+
+exports.getFeaturedStores = async (req, res) => {
+  try {
+    const stores = await Store.find({
+      approvalStatus: "APPROVED",
+      status: "ACTIVE",
+    })
+      .select("storeName storeType location bio logo services workingHours isOpen")
+      .limit(10);
+
+    return success(res, "Featured stores fetched", stores);
+  } catch (err) {
+    return error(res, "Failed to get featured stores", 500);
+  }
+};
+
+exports.getStoreDetails = async (req, res) => {
+  try {
+    const store = await Store.findById(req.params.id)
+      .populate("stylists", "name email instapayNumber")
+      .populate("receptionists", "name email");
+
+    if (!store) return res.status(404).json({ message: "Store not found" });
+    res.json(store);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.toggleFavorite = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { storeId } = req.params;
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const isFavorite = user.favorites.map(String).includes(String(storeId));
+
+    if (isFavorite) {
+      user.favorites = user.favorites.filter(
+        (id) => String(id) !== String(storeId)
+      );
+    } else {
+      user.favorites.push(storeId);
+    }
+
+    await user.save();
+
+    return success(res, isFavorite ? "Removed from favorites" : "Added to favorites");
+  } catch (err) {
+    return error(res, "Could not update favorites", 500);
   }
 };

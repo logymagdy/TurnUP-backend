@@ -1,33 +1,60 @@
 const mongoose = require("mongoose");
 
 const queueEntrySchema = new mongoose.Schema({
-  queueNumber: Number,
+  queueNumber: { type: Number, required: true },
   client: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
-  clientName: String,
+  clientName: { type: String, default: "Walk-in" },
   stylist: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
-  service: String,
+  service: {
+    name: String,
+    price: Number,
+    durationMin: Number,
+    durationMax: Number,
+  },
   isWalkIn: { type: Boolean, default: false },
+  isOnline: { type: Boolean, default: false },
   status: {
     type: String,
     enum: ["WAITING", "ARRIVED", "IN_SERVICE", "DONE", "EXPIRED", "CANCELLED"],
     default: "WAITING",
   },
-  estimatedStartTime: String,
-  actualStartTime: String,
-  actualEndTime: String,
+  isGroupBooking: { type: Boolean, default: false },
+  groupMembers: [
+    {
+      clientId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      clientName: String,
+      service: {
+        name: String,
+        price: Number,
+        durationMin: Number,
+        durationMax: Number,
+      },
+    },
+  ],
+  estimatedStartTime: { type: String, default: null },
+  actualStartTime: { type: String, default: null },
+  actualEndTime: { type: String, default: null },
   seatNumber: { type: Number, default: null },
+  penaltyApplied: { type: Boolean, default: false },
+  penaltyAmount: { type: Number, default: 0 },
+  loyaltyPointsAwarded: { type: Number, default: 0 },
 });
 
-const queueSchema = new mongoose.Schema({
-  storeId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Store",
-    required: true,
+const queueSchema = new mongoose.Schema(
+  {
+    storeId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Store",
+      required: true,
+    },
+    date: { type: String, required: true },
+    isActive: { type: Boolean, default: false },
+    currentNumber: { type: Number, default: 0 },
+    entries: [queueEntrySchema],
   },
-  date: { type: String, required: true },
-  isActive: { type: Boolean, default: true },
-  currentNumber: { type: Number, default: 0 },
-  entries: [queueEntrySchema],
-}, { timestamps: true });
+  { timestamps: true }
+);
+
+queueSchema.index({ storeId: 1, date: 1 }, { unique: true });
 
 module.exports = mongoose.model("Queue", queueSchema);

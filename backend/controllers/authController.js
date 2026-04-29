@@ -1,8 +1,26 @@
 const User = require("../models/userModel");
 const jwt = require("jsonwebtoken");
 const nodemailer = require("nodemailer");
+const { generateReferralCode } = require("../utils/generateReferralCode");
 
-// Email transporter
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+const generateToken = (id, role, storeId) => {
+  return jwt.sign(
+    { id, role, storeId },
+    process.env.JWT_SECRET,
+    { expiresIn: "7d" }
+  );
+};
+
+const generateRefreshToken = (id) => {
+  return jwt.sign(
+    { id },
+    process.env.JWT_REFRESH_SECRET,
+    { expiresIn: "30d" }
+  );
+};
+
+// ─── Nodemailer transporter ───────────────────────────────────────────────────
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
@@ -11,56 +29,182 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-// Register
+// ─── REGISTER ─────────────────────────────────────────────────────────────────
 exports.registerUser = async (req, res) => {
   try {
-    const { name, email, password, role } = req.body;
+    const {
+      name,
+      email,
+      password,
+      role,
+      phone,
+      servicePreference,
+      referralCode: incomingReferralCode,
+    } = req.body;
 
     if (role === "ADMIN")
-      return res.status(403).json({ message: "Cannot self-register as ADMIN" });
+      return res.status(403).json({ message: "Forbidden" });
+
+    const allowedRoles = ["serviceProvider", "RECEPTIONIST", "STYLIST", "CLIENT"];
+    if (!allowedRoles.includes(role))
+      return res.status(400).json({ message: "Invalid role" });
 
     const existingUser = await User.findOne({ email });
     if (existingUser)
       return res.status(400).json({ message: "User already exists" });
 
-    const newUser = new User({ name, email, password, role });
-    await newUser.save();
+    let referredBy = null;
+    if (incomingReferralCode) {
+      const referrer = await User.findOne({ referralCode: incomingReferralCode });
+      if (referrer) referredBy = referrer._id;
+    }
 
-    res.status(201).json({ message: "User registered successfully", userId: newUser._id });
+    let newReferralCode = null;
+    if (role === "CLIENT") {
+      let unique = false;
+      while (!unique) {
+        newReferralCode = generateReferralCode();
+        const clash = await User.findOne({ referralCode: newReferralCode });
+        if (!clash) unique = true;
+      }
+    }
+
+    const newUser = new User({
+      name,
+      email,
+      password,
+      phone,
+      role: role || "CLIENT",
+      servicePreference,
+      referralCode: newReferralCode,
+      referredBy,
+    });
+
+    await newUser.save();
+    const token = generateToken(newUser._id, newUser.role, null);
+
+    res.status(201).json({
+      message: "Account created successfully",
+      token,
+      userId: newUser._id,
+      referralCode: newReferralCode,
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 };
 
-// Login
+// ─── LOGIN ────────────────────────────────────────────────────────────────────
 exports.loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
-
     const user = await User.findOne({ email });
-    if (!user)
-      return res.status(400).json({ message: "Invalid email or password" });
+    if (!user || !(await user.comparePassword(password)))
+      return res.status(400).json({ message: "Invalid credentials" });
 
-    const isMatch = await user.comparePassword(password);
-    if (!isMatch)
-      return res.status(400).json({ message: "Invalid email or password" });
+    const token = generateToken(user._id, user.role, user.storeId);
+    const refreshToken = generateRefreshToken(user._id);
 
-    const token = jwt.sign(
-      { id: user._id, role: user.role, storeId: user.storeId || null },
-      process.env.JWT_SECRET,
-      { expiresIn: "1h" }
-    );
-
-    res.json({ message: "Login successful", token, role: user.role });
+    res.json({
+      message: "Login successful",
+      token,
+      refreshToken,
+      role: user.role,
+      userId: user._id,
+      name: user.name,
+      storeId: user.storeId || null,
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 };
 
-// Get Profile
+// ─── SOCIAL LOGINS ────────────────────────────────────────────────────────────
+exports.googleLogin = async (req, res) => {
+  try {
+    const { email, name, socialId } = req.body;
+    if (!email || !name || !socialId)
+      return res.status(400).json({ message: "email, name and socialId are required" });
+
+    let user = await User.findOne({ email });
+    if (!user) {
+      user = new User({ name, email, socialId, socialProvider: "google", role: "CLIENT", phone: null });
+      await user.save();
+    }
+
+    const token = generateToken(user._id, user.role, user.storeId);
+    const refreshToken = generateRefreshToken(user._id);
+    res.json({ message: "Google login successful", token, refreshToken, userId: user._id, role: user.role, name: user.name });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.facebookLogin = async (req, res) => {
+  try {
+    const { email, name, socialId } = req.body;
+    if (!email || !name || !socialId)
+      return res.status(400).json({ message: "email, name and socialId are required" });
+
+    let user = await User.findOne({ email });
+    if (!user) {
+      user = new User({ name, email, socialId, socialProvider: "facebook", role: "CLIENT", phone: null });
+      await user.save();
+    }
+
+    const token = generateToken(user._id, user.role, user.storeId);
+    const refreshToken = generateRefreshToken(user._id);
+    res.json({ message: "Facebook login successful", token, refreshToken, userId: user._id, role: user.role, name: user.name });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.socialLogin = async (req, res) => {
+  try {
+    const { provider, email, name, socialId } = req.body;
+    if (!email || !name || !socialId || !provider)
+      return res.status(400).json({ message: "provider, email, name and socialId are required" });
+
+    let user = await User.findOne({ email });
+    if (!user) {
+      user = new User({ name, email, socialId, socialProvider: provider, role: "CLIENT", phone: null });
+      await user.save();
+    }
+
+    const token = generateToken(user._id, user.role, user.storeId);
+    const refreshToken = generateRefreshToken(user._id);
+    res.json({ message: `${provider} login successful`, token, refreshToken, userId: user._id, role: user.role, name: user.name });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// ─── LOGOUT & TOKEN ───────────────────────────────────────────────────────────
+exports.logout = async (req, res) => {
+  res.json({ message: "Logged out successfully" });
+};
+
+exports.refreshToken = async (req, res) => {
+  const { refreshToken } = req.body;
+  if (!refreshToken) return res.status(401).json({ message: "No refresh token" });
+  try {
+    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+    const user = await User.findById(decoded.id);
+    if (!user) return res.status(401).json({ message: "User not found" });
+    const newToken = generateToken(user._id, user.role, user.storeId);
+    res.json({ token: newToken });
+  } catch (err) {
+    res.status(401).json({ message: "Invalid refresh token" });
+  }
+};
+
+// ─── PROFILE MANAGEMENT ───────────────────────────────────────────────────────
 exports.getProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select("-password");
+    const user = await User.findById(req.user.id)
+      .select("-password -otp -otpExpiry")
+      .populate("storeId", "storeName storeType");
     if (!user) return res.status(404).json({ message: "User not found" });
     res.json(user);
   } catch (err) {
@@ -68,118 +212,156 @@ exports.getProfile = async (req, res) => {
   }
 };
 
-// Update Password
+exports.updateProfile = async (req, res) => {
+  try {
+    const allowedUpdates = ["name", "phone", "dateOfBirth", "instapayNumber", "servicePreference"];
+    const updates = {};
+    allowedUpdates.forEach((field) => {
+      if (req.body[field] !== undefined) updates[field] = req.body[field];
+    });
+
+    const user = await User.findByIdAndUpdate(req.user.id, updates, { new: true, runValidators: true })
+      .select("-password -otp -otpExpiry");
+    res.json({ message: "Profile updated successfully", user });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// ─── NEWLY ADDED FUNCTIONS TO FIX CRASH ───────────────────────────────────────
+exports.updateAvatar = async (req, res) => {
+  try {
+    const { avatar } = req.body;
+    const user = await User.findByIdAndUpdate(req.user.id, { avatar }, { new: true })
+      .select("-password");
+    res.json({ message: "Avatar updated", user });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.updateLocation = async (req, res) => {
+  try {
+    const { coordinates } = req.body; // Expecting [lng, lat]
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      { location: { type: "Point", coordinates } },
+      { new: true }
+    ).select("-password");
+    res.json({ message: "Location updated", user });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.deleteAccount = async (req, res) => {
+  try {
+    await User.findByIdAndDelete(req.user.id);
+    res.json({ message: "Account deleted successfully" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// ─── SETTINGS & SECURITY ──────────────────────────────────────────────────────
+exports.updateNotificationSettings = async (req, res) => {
+  try {
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      { $set: { notificationSettings: req.body } },
+      { new: true }
+    );
+    res.json({ message: "Settings updated", settings: user.notificationSettings });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 exports.updatePassword = async (req, res) => {
   try {
-    const { email, newPassword } = req.body;
-
-    const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ message: "User not found" });
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) return res.status(400).json({ message: "Current and new password required" });
+    const user = await User.findById(req.user.id);
+    if (!user || !(await user.comparePassword(currentPassword)))
+      return res.status(400).json({ message: "Current password is incorrect" });
 
     user.password = newPassword;
     await user.save();
-
     res.json({ message: "Password updated successfully" });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 };
 
-// Forgot Password — generates and sends OTP
+// ─── PASSWORD RESET (OTP) ─────────────────────────────────────────────────────
 exports.forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
-
     const user = await User.findOne({ email });
-    if (!user)
-      return res.status(404).json({ message: "No account found with this email" });
+    if (!user) return res.status(404).json({ message: "No account found" });
 
-    // Generate 6 digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-
-    // Save OTP and expiry (10 minutes)
     user.otp = otp;
     user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
     await user.save();
 
-    // Send OTP via email
     await transporter.sendMail({
-      from: process.env.EMAIL_USER,
+      from: `"TurnUP" <${process.env.EMAIL_USER}>`,
       to: email,
-      subject: "TurnUP - Password Reset OTP",
-      html: `
-        <h2>TurnUP Password Reset</h2>
-        <p>Your OTP code is:</p>
-        <h1 style="color: #4CAF50; letter-spacing: 5px;">${otp}</h1>
-        <p>This code expires in <strong>10 minutes</strong>.</p>
-        <p>If you did not request this, ignore this email.</p>
-      `,
+      subject: "TurnUP — Password Reset OTP",
+      html: `<h1 style="color: #6C3EF0;">${otp}</h1>`,
     });
-
     res.json({ message: "OTP sent to your email" });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 };
 
-// Verify OTP
 exports.verifyOtp = async (req, res) => {
   try {
     const { email, otp } = req.body;
-
-    const user = await User.findOne({ email });
-    if (!user)
-      return res.status(404).json({ message: "No account found with this email" });
-
-    // Check OTP exists
-    if (!user.otp)
-      return res.status(400).json({ message: "No OTP requested" });
-
-    // Check OTP expiry
-    if (new Date() > user.otpExpiry)
-      return res.status(400).json({ message: "OTP has expired, request a new one" });
-
-    // Check OTP match
-    if (user.otp !== otp)
-      return res.status(400).json({ message: "Invalid OTP" });
-
+    const user = await User.findOne({ email, otp, otpExpiry: { $gt: Date.now() } });
+    if (!user) return res.status(400).json({ message: "Invalid or expired OTP" });
     res.json({ message: "OTP verified successfully" });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 };
 
-// Reset Password
 exports.resetPassword = async (req, res) => {
   try {
     const { email, otp, newPassword } = req.body;
+    const user = await User.findOne({ email, otp, otpExpiry: { $gt: Date.now() } });
+    if (!user) return res.status(400).json({ message: "Invalid or expired OTP" });
 
-    const user = await User.findOne({ email });
-    if (!user)
-      return res.status(404).json({ message: "No account found with this email" });
-
-    // Check OTP exists
-    if (!user.otp)
-      return res.status(400).json({ message: "No OTP requested" });
-
-    // Check OTP expiry
-    if (new Date() > user.otpExpiry)
-      return res.status(400).json({ message: "OTP has expired, request a new one" });
-
-    // Check OTP match
-    if (user.otp !== otp)
-      return res.status(400).json({ message: "Invalid OTP" });
-
-    // Update password
     user.password = newPassword;
-
-    // Clear OTP
     user.otp = null;
     user.otpExpiry = null;
+    await user.save();
+    res.json({ message: "Password reset successfully" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
 
+exports.resendOtp = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    user.otp = otp;
+    user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
     await user.save();
 
-    res.json({ message: "Password reset successfully" });
+    await transporter.sendMail({
+      from: `"TurnUP" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: "TurnUP — New OTP",
+      html: `<h1 style="color: #6C3EF0;">${otp}</h1>`,
+    });
+    res.json({ message: "New OTP sent" });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
