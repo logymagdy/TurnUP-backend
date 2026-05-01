@@ -2,7 +2,9 @@ const Appointment = require("../models/appointmentModel");
 
 // ─── GET LIVE QUEUE ───────────────────────────────────────────────────────────
 // Read-only — displays today's live queue sorted by queue number
-// Excludes NO_SHOW and CANCELLED entries
+// Excludes NO_SHOW, CANCELLED, and EXPIRED entries
+// All core logic (queue number assignment, check-in, expiry, penalties)
+// is handled in bookingController, checkInController, and background jobs
 exports.getLiveQueue = async (req, res) => {
   try {
     const today = new Date().toISOString().split("T")[0];
@@ -10,7 +12,7 @@ exports.getLiveQueue = async (req, res) => {
     const entries = await Appointment.find({
       storeId: req.user.storeId,
       date: today,
-      status: { $nin: ["NO_SHOW", "CANCELLED"] },
+      status: { $nin: ["NO_SHOW", "CANCELLED", "EXPIRED"] },
     })
       .populate("client", "name photo")
       .populate("stylist", "name")
@@ -20,7 +22,7 @@ exports.getLiveQueue = async (req, res) => {
       return res.status(404).json({ message: "No active queue for today." });
     }
 
-    // Calculate total wait time from all entries still waiting or checked in
+    // Calculate total wait time from entries still waiting or checked in
     const pendingEntries = entries.filter((e) =>
       ["PENDING", "CONFIRMED", "CHECKED_IN"].includes(e.status)
     );
@@ -35,6 +37,17 @@ exports.getLiveQueue = async (req, res) => {
     const minutes = Math.round(totalWaitMinutes % 60);
     const totalWaitTime =
       hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+
+    // Emit real-time queue update to store dashboard
+    const io = req.app.get("io");
+    if (io) {
+      io.to(`store:${req.user.storeId}`).emit("queueUpdated", {
+        type: "QUEUE_UPDATED",
+        totalWaitTime,
+        totalInQueue: pendingEntries.length,
+        entries,
+      });
+    }
 
     return res.status(200).json({
       totalWaitTime,
