@@ -1,4 +1,5 @@
 const Notification = require("../models/notificationModel");
+const User = require("../models/userModel");
 
 // ─── GET MY NOTIFICATIONS ─────────────────────────────────────────────────────
 exports.getMyNotifications = async (req, res) => {
@@ -49,6 +50,24 @@ exports.markAllAsRead = async (req, res) => {
     );
 
     return res.status(200).json({ message: "All notifications marked as read." });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+// ─── SAVE EXPO PUSH TOKEN ─────────────────────────────────────────────────────
+// Called from mobile app after Expo registers device token
+exports.savePushToken = async (req, res) => {
+  try {
+    const { expoPushToken } = req.body;
+
+    if (!expoPushToken) {
+      return res.status(400).json({ message: "Expo push token is required." });
+    }
+
+    await User.findByIdAndUpdate(req.user.id, { expoPushToken });
+
+    return res.status(200).json({ message: "Push token saved successfully." });
   } catch (err) {
     return res.status(500).json({ message: err.message });
   }
