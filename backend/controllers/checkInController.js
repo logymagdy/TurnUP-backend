@@ -1,5 +1,6 @@
 const Appointment = require("../models/appointmentModel");
 const Store = require("../models/storeModel");
+const { sendNotification } = require("../services/notificationService");
 
 // ─── QR CHECK-IN ──────────────────────────────────────────────────────────────
 // Called when client scans the store QR code
@@ -40,7 +41,7 @@ exports.checkIn = async (req, res) => {
 
     if (minutesUntilAppointment > 30) {
       return res.status(400).json({
-        message: `Too early to check in. Please arrive closer to your appointment time.`,
+        message: "Too early to check in. Please arrive closer to your appointment time.",
         minutesUntilAppointment: Math.round(minutesUntilAppointment),
       });
     }
@@ -51,17 +52,41 @@ exports.checkIn = async (req, res) => {
     appointment.status = "CHECKED_IN";
     await appointment.save();
 
-    // Notify store owner and receptionist in real time
-    const io = req.app.get("io");
-    if (io) {
-      io.to(`store:${storeId}`).emit("clientCheckedIn", {
-        type: "CHECK_IN",
-        message: `Client checked in for queue #${appointment.queueNumber}`,
-        appointmentId: appointment._id,
-        queueNumber: appointment.queueNumber,
-        clientId,
-        checkInTime: appointment.checkInTime,
-      });
+    // Find store to get owner ID
+    const store = await Store.findById(storeId).select("owner storeName receptionists");
+
+    // Notify client — check-in confirmed
+    await sendNotification(
+      clientId,
+      "BOOKING_CONFIRMED",
+      `You have successfully checked in at ${store.storeName}. Queue #${appointment.queueNumber}.`,
+      "Check-In Confirmed",
+      appointment._id,
+      "APPOINTMENT"
+    );
+
+    // Notify store owner — client checked in
+    await sendNotification(
+      store.owner,
+      "CLIENT_CHECKED_IN",
+      `A client has checked in. Queue #${appointment.queueNumber}.`,
+      "Client Checked In",
+      appointment._id,
+      "APPOINTMENT"
+    );
+
+    // Notify all receptionists in store — client checked in
+    if (store.receptionists && store.receptionists.length > 0) {
+      for (const receptionistId of store.receptionists) {
+        await sendNotification(
+          receptionistId,
+          "CLIENT_CHECKED_IN",
+          `Client checked in. Queue #${appointment.queueNumber}.`,
+          "Client Checked In",
+          appointment._id,
+          "APPOINTMENT"
+        );
+      }
     }
 
     return res.status(200).json({
