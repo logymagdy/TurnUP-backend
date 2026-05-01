@@ -9,6 +9,8 @@ const app = express();
 const server = http.createServer(app);
 
 // ─── SOCKET.IO ────────────────────────────────────────────────────────────────
+// Socket.io is kept for real-time store dashboard updates (queue, check-ins)
+// Push notifications to mobile devices are handled via Expo push SDK
 const io = new Server(server, {
   cors: { origin: "*", methods: ["GET", "POST"] },
 });
@@ -18,22 +20,15 @@ app.set("io", io);
 io.on("connection", (socket) => {
   console.log(`🔌 Socket connected: ${socket.id}`);
 
-  // User joins their personal room
+  // Store staff joins store room for live queue dashboard updates
   socket.on("join", (userId) => {
     socket.join(userId);
     console.log(`👤 User ${userId} joined their room`);
   });
 
-  // Store staff joins store room
   socket.on("joinStore", (storeId) => {
     socket.join(`store:${storeId}`);
     console.log(`🏪 Socket joined store room: ${storeId}`);
-  });
-
-  // Client joins personal room for notifications
-  socket.on("joinClient", (clientId) => {
-    socket.join(`client:${clientId}`);
-    console.log(`📱 Client ${clientId} joined their personal room`);
   });
 
   socket.on("sendMessage", (payload) => {
