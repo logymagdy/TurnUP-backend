@@ -94,6 +94,15 @@ const storeSchema = new mongoose.Schema(
       default: "NONE",
     },
     depositAmount: { type: Number, default: 0 },
+    refundPolicy: {
+      allowedCancellationMinutes: { type: Number, default: 30 },
+      refundType: {
+        type: String,
+        enum: ["FULL", "PARTIAL", "NONE"],
+        default: "FULL",
+      },
+      partialRefundPercentage: { type: Number, default: 0 },
+    },
   },
   { timestamps: true }
 );
