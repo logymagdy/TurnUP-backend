@@ -18,17 +18,19 @@ app.set("io", io);
 io.on("connection", (socket) => {
   console.log(`🔌 Socket connected: ${socket.id}`);
 
+  // User joins their personal room
   socket.on("join", (userId) => {
     socket.join(userId);
     console.log(`👤 User ${userId} joined their room`);
   });
 
+  // Store staff joins store room
   socket.on("joinStore", (storeId) => {
     socket.join(`store:${storeId}`);
     console.log(`🏪 Socket joined store room: ${storeId}`);
   });
 
-  // Client joins their own room to receive personal notifications
+  // Client joins personal room for notifications
   socket.on("joinClient", (clientId) => {
     socket.join(`client:${clientId}`);
     console.log(`📱 Client ${clientId} joined their personal room`);
@@ -57,29 +59,32 @@ connectDB();
 // ─── ROUTES ───────────────────────────────────────────────────────────────────
 
 // Auth & Users
-app.use("/api/auth",      require("./routes/authRoutes"));
-app.use("/api/users",     require("./routes/userRoutes"));
+app.use("/api/auth",          require("./routes/authRoutes"));
+app.use("/api/users",         require("./routes/userRoutes"));
 
 // Store & Discovery
-app.use("/api/store",     require("./routes/storeRoutes"));
-app.use("/api/salons",    require("./routes/storeRoutes"));
+app.use("/api/store",         require("./routes/storeRoutes"));
+app.use("/api/salons",        require("./routes/storeRoutes"));
 
 // Operations
-app.use("/api/queue",     require("./routes/queueRoutes"));
-app.use("/api/booking",   require("./routes/bookingRoutes"));
-app.use("/api/bookings",  require("./routes/bookingRoutes"));
-app.use("/api/checkin",   require("./routes/checkInRoutes"));
+app.use("/api/queue",         require("./routes/queueRoutes"));
+app.use("/api/booking",       require("./routes/bookingRoutes"));
+app.use("/api/bookings",      require("./routes/bookingRoutes"));
+app.use("/api/checkin",       require("./routes/checkInRoutes"));
+
+// Notifications
+app.use("/api/notifications", require("./routes/notificationRoutes"));
 
 // Payments & Marketing
-app.use("/api/payment",   require("./routes/paymentRoutes"));
-app.use("/api/payments",  require("./routes/paymentRoutes"));
-app.use("/api/loyalty",   require("./routes/loyaltyRoutes"));
-app.use("/api/promotion", require("./routes/promotionRoutes"));
-app.use("/api/complaint", require("./routes/complaintRoutes"));
+app.use("/api/payment",       require("./routes/paymentRoutes"));
+app.use("/api/payments",      require("./routes/paymentRoutes"));
+app.use("/api/loyalty",       require("./routes/loyaltyRoutes"));
+app.use("/api/promotion",     require("./routes/promotionRoutes"));
+app.use("/api/complaint",     require("./routes/complaintRoutes"));
 
 // Admin & Analytics
-app.use("/api/analytics", require("./routes/analyticsRoutes"));
-app.use("/api/admin",     require("./routes/adminRoutes"));
+app.use("/api/analytics",     require("./routes/analyticsRoutes"));
+app.use("/api/admin",         require("./routes/adminRoutes"));
 
 // ─── HEALTH CHECK ─────────────────────────────────────────────────────────────
 app.get("/", (req, res) => res.json({
