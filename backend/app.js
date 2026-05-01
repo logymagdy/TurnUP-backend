@@ -4,13 +4,12 @@ const cors = require("cors");
 const http = require("http");
 const { Server } = require("socket.io");
 const connectDB = require("./config/db");
+const { runQueueExpiryJob } = require("./services/queueExpiryJob");
 
 const app = express();
 const server = http.createServer(app);
 
 // ─── SOCKET.IO ────────────────────────────────────────────────────────────────
-// Socket.io is kept for real-time store dashboard updates (queue, check-ins)
-// Push notifications to mobile devices are handled via Expo push SDK
 const io = new Server(server, {
   cors: { origin: "*", methods: ["GET", "POST"] },
 });
@@ -20,7 +19,6 @@ app.set("io", io);
 io.on("connection", (socket) => {
   console.log(`🔌 Socket connected: ${socket.id}`);
 
-  // Store staff joins store room for live queue dashboard updates
   socket.on("join", (userId) => {
     socket.join(userId);
     console.log(`👤 User ${userId} joined their room`);
@@ -50,6 +48,11 @@ app.use(express.json());
 
 // ─── DATABASE ─────────────────────────────────────────────────────────────────
 connectDB();
+
+// ─── QUEUE EXPIRY JOB — runs every 60 seconds ─────────────────────────────────
+setInterval(() => {
+  runQueueExpiryJob();
+}, 60 * 1000);
 
 // ─── ROUTES ───────────────────────────────────────────────────────────────────
 
