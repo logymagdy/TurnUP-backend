@@ -28,6 +28,12 @@ io.on("connection", (socket) => {
     console.log(`🏪 Socket joined store room: ${storeId}`);
   });
 
+  // Client joins their own room to receive personal notifications
+  socket.on("joinClient", (clientId) => {
+    socket.join(`client:${clientId}`);
+    console.log(`📱 Client ${clientId} joined their personal room`);
+  });
+
   socket.on("sendMessage", (payload) => {
     io.to(payload.receiverId).emit("newMessage", payload);
   });
@@ -62,6 +68,7 @@ app.use("/api/salons",    require("./routes/storeRoutes"));
 app.use("/api/queue",     require("./routes/queueRoutes"));
 app.use("/api/booking",   require("./routes/bookingRoutes"));
 app.use("/api/bookings",  require("./routes/bookingRoutes"));
+app.use("/api/checkin",   require("./routes/checkInRoutes"));
 
 // Payments & Marketing
 app.use("/api/payment",   require("./routes/paymentRoutes"));
