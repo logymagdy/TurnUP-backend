@@ -23,11 +23,11 @@ const appointmentSchema = new mongoose.Schema(
       durationMin: Number,
       durationMax: Number,
     },
-    date: { type: String, required: true }, // Format: YYYY-MM-DD
-    time: { type: String, required: true }, // Format: HH:mm
+    date: { type: String, required: true },
+    time: { type: String, required: true },
     status: {
       type: String,
-      enum: ["PENDING", "CONFIRMED", "IN_SERVICE", "DONE", "CANCELLED", "NO_SHOW"],
+      enum: ["PENDING", "CONFIRMED", "CHECKED_IN", "IN_SERVICE", "DONE", "CANCELLED", "NO_SHOW"],
       default: "PENDING",
     },
     bookingType: {
@@ -35,13 +35,18 @@ const appointmentSchema = new mongoose.Schema(
       enum: ["NORMAL", "HOME", "EVENT"],
       default: "NORMAL",
     },
-    address: { type: String, default: null }, // Required if bookingType is "HOME"
-    
+    address: { type: String, default: null },
+
+    // Queue
+    queueNumber: { type: Number, default: null },
+    checkedIn: { type: Boolean, default: false },
+    checkInTime: { type: Date, default: null },
+
     // Payment & Deposit
     deposit: { type: Number, default: 0 },
     depositPaid: { type: Boolean, default: false },
     depositRefunded: { type: Boolean, default: false },
-    paymentId: { type: String, default: null }, // To store transaction reference
+    paymentId: { type: String, default: null },
     isPaid: { type: Boolean, default: false },
     paymentMethod: {
       type: String,
