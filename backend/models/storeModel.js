@@ -42,6 +42,11 @@ const storeSchema = new mongoose.Schema(
       autoAssignStaff: { type: Boolean, default: true },
       showWaitTime: { type: Boolean, default: true },
       manualQueueControl: { type: Boolean, default: false },
+      maxGroupSize: { type: Number, default: 10 },
+      // Queue expiry: how many minutes after estimated turn before no-show
+      queueExpiryMinutes: { type: Number, default: 20 },
+      // No-show penalty amount in EGP
+      noShowPenalty: { type: Number, default: 15 },
     },
     loyaltyProgram: {
       enabled: { type: Boolean, default: false },
@@ -94,8 +99,15 @@ const storeSchema = new mongoose.Schema(
       default: "NONE",
     },
     depositAmount: { type: Number, default: 0 },
+
+    // ── Refund policy for HOME and EVENT bookings ──────────────────────
     refundPolicy: {
-      allowedCancellationMinutes: { type: Number, default: 30 },
+      // NORMAL queue cancellation window in minutes
+      normalCancellationMinutes: { type: Number, default: 20 },
+      // HOME booking cancellation window in minutes
+      homeCancellationMinutes: { type: Number, default: 30 },
+      // EVENT booking cancellation window in minutes
+      eventCancellationMinutes: { type: Number, default: 60 },
       refundType: {
         type: String,
         enum: ["FULL", "PARTIAL", "NONE"],
