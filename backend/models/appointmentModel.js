@@ -27,7 +27,16 @@ const appointmentSchema = new mongoose.Schema(
     time: { type: String, required: true },
     status: {
       type: String,
-      enum: ["PENDING", "CONFIRMED", "CHECKED_IN", "IN_SERVICE", "DONE", "CANCELLED", "NO_SHOW"],
+      enum: [
+        "PENDING",
+        "CONFIRMED",
+        "CHECKED_IN",
+        "IN_SERVICE",
+        "DONE",
+        "CANCELLED",
+        "NO_SHOW",
+        "EXPIRED",
+      ],
       default: "PENDING",
     },
     bookingType: {
@@ -37,12 +46,16 @@ const appointmentSchema = new mongoose.Schema(
     },
     address: { type: String, default: null },
 
-    // Queue
+    // ── Queue fields ───────────────────────────────────────────────────
     queueNumber: { type: Number, default: null },
+    estimatedStartTime: { type: Date, default: null },
+    expiryTime: { type: Date, default: null },
     checkedIn: { type: Boolean, default: false },
     checkInTime: { type: Date, default: null },
+    actualStartTime: { type: Date, default: null },
+    actualEndTime: { type: Date, default: null },
 
-    // Payment & Deposit
+    // ── Payment & Deposit ──────────────────────────────────────────────
     deposit: { type: Number, default: 0 },
     depositPaid: { type: Boolean, default: false },
     depositRefunded: { type: Boolean, default: false },
@@ -54,7 +67,7 @@ const appointmentSchema = new mongoose.Schema(
       default: null,
     },
 
-    // Group Bookings
+    // ── Group Bookings ─────────────────────────────────────────────────
     isGroupBooking: { type: Boolean, default: false },
     groupMembers: [
       {
@@ -70,13 +83,13 @@ const appointmentSchema = new mongoose.Schema(
     ],
     totalGroupPrice: { type: Number, default: 0 },
 
-    // Post-Service
+    // ── Post-Service ───────────────────────────────────────────────────
     rating: { type: Number, min: 1, max: 5, default: null },
     review: { type: String, default: null },
     ratedAt: { type: Date, default: null },
     ratingDeadline: { type: Date, default: null },
 
-    // Cancellation
+    // ── Cancellation ───────────────────────────────────────────────────
     cancelledBy: {
       type: String,
       enum: ["CLIENT", "STORE", null],
