@@ -94,6 +94,9 @@ const userSchema = new mongoose.Schema(
     visitCount: { type: Number, default: 0 },
     instapayNumber: { type: String, default: null },
 
+    // Expo Push Notifications
+    expoPushToken: { type: String, default: null },
+
     // App Settings
     language: { type: String, default: "en" },
 
