@@ -18,7 +18,6 @@ exports.createBooking = async (req, res) => {
     const store = await Store.findById(storeId);
     if (!store) return res.status(404).json({ message: "Store not found" });
 
-    // Check stylist availability
     const existingAppointment = await Appointment.findOne({
       stylist: stylistId,
       date,
@@ -29,10 +28,19 @@ exports.createBooking = async (req, res) => {
     if (existingAppointment)
       return res.status(400).json({ message: "Stylist already booked for this time" });
 
-    // Calculate deposit
+    // Calculate deposit based on store's depositType (FIXED or PERCENTAGE)
     let depositAmount = 0;
     if (bookingType === "HOME" || bookingType === "EVENT") {
-      depositAmount = store.depositAmount || 0;
+      if (store.depositType === "FIXED") {
+        depositAmount = store.depositAmount || 0;
+      } else if (store.depositType === "PERCENTAGE") {
+        const serviceData = store.services.find(
+          (s) => s.name === service.name
+        );
+        if (serviceData) {
+          depositAmount = (serviceData.price * store.depositAmount) / 100;
+        }
+      }
     }
 
     const newAppointment = new Appointment({
@@ -50,10 +58,11 @@ exports.createBooking = async (req, res) => {
 
     await newAppointment.save();
 
-    // Socket notification
+    // Notify store owner — new booking arrived
     const io = req.app.get("io");
     if (io) {
       io.to(`store:${storeId}`).emit("newBooking", {
+        type: "NEW_BOOKING",
         message: "New appointment booked!",
         appointment: newAppointment,
       });
@@ -63,6 +72,7 @@ exports.createBooking = async (req, res) => {
       message: "Booking created successfully",
       appointment: newAppointment,
       requiresDeposit: depositAmount > 0,
+      depositAmount,
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -135,19 +145,48 @@ exports.cancelBooking = async (req, res) => {
     if (["DONE", "CANCELLED"].includes(appointment.status))
       return res.status(400).json({ message: "Cannot cancel this booking" });
 
-    // Check cancellation policy
+    // Read refund policy from store — store owner controls this, backend enforces it
+    const store = await Store.findById(appointment.storeId);
+    if (!store)
+      return res.status(404).json({ message: "Store not found" });
+
+    const policy = store.refundPolicy;
+    const allowedMinutes = policy?.allowedCancellationMinutes ?? 30;
+    const refundType = policy?.refundType ?? "FULL";
+    const partialRefundPercentage = policy?.partialRefundPercentage ?? 0;
+
     const appointmentTime = new Date(`${appointment.date}T${appointment.time}`);
     const now = new Date();
-    const minutesDiff = (appointmentTime - now) / (1000 * 60);
+    const minutesUntilAppointment = (appointmentTime - now) / (1000 * 60);
 
     let refundAmount = 0;
-    if (minutesDiff >= 30) {
-      refundAmount = appointment.deposit;
+
+    if (minutesUntilAppointment >= allowedMinutes) {
+      if (refundType === "FULL") {
+        refundAmount = appointment.deposit;
+      } else if (refundType === "PARTIAL") {
+        refundAmount = (appointment.deposit * partialRefundPercentage) / 100;
+      } else {
+        refundAmount = 0;
+      }
+    } else {
+      refundAmount = 0;
     }
 
     appointment.status = "CANCELLED";
     appointment.cancelledBy = "CLIENT";
     await appointment.save();
+
+    // Notify store owner — booking cancelled
+    const io = req.app.get("io");
+    if (io) {
+      io.to(`store:${appointment.storeId}`).emit("bookingCancelled", {
+        type: "CANCELLATION",
+        message: "A booking has been cancelled by the client.",
+        appointmentId: appointment._id,
+        refundAmount,
+      });
+    }
 
     return success(res, "Booking cancelled successfully", {
       refundAmount,
