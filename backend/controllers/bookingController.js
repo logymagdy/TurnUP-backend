@@ -1,6 +1,7 @@
 const Appointment = require("../models/appointmentModel");
 const Store = require("../models/storeModel");
 const { success, error } = require("../utils/responseHandler");
+const { sendNotification } = require("../services/notificationService");
 
 // ─── CREATE BOOKING ───────────────────────────────────────────────────────────
 exports.createBooking = async (req, res) => {
@@ -43,6 +44,17 @@ exports.createBooking = async (req, res) => {
       }
     }
 
+    // Assign next queue number for today
+    const today = new Date().toISOString().split("T")[0];
+    const lastEntry = await Appointment.findOne({
+      storeId,
+      date: today,
+    }).sort({ queueNumber: -1 });
+
+    const queueNumber = lastEntry && lastEntry.queueNumber
+      ? lastEntry.queueNumber + 1
+      : 1;
+
     const newAppointment = new Appointment({
       storeId,
       client: req.user.id,
@@ -54,28 +66,40 @@ exports.createBooking = async (req, res) => {
       address: bookingType === "HOME" || bookingType === "EVENT" ? address : null,
       deposit: depositAmount,
       depositPaid: false,
+      queueNumber,
+      checkedIn: false,
     });
 
     await newAppointment.save();
 
-    // Notify store owner — new booking arrived
-    const io = req.app.get("io");
-    if (io) {
-      io.to(`store:${storeId}`).emit("newBooking", {
-        type: "NEW_BOOKING",
-        message: "New appointment booked!",
-        appointment: newAppointment,
-      });
-    }
+    // Notify client — booking confirmed
+    await sendNotification(
+      req.user.id,
+      "BOOKING_CONFIRMED",
+      `Your booking at ${store.storeName} is confirmed. Queue #${queueNumber} on ${date} at ${time}.`,
+      "Booking Confirmed",
+      newAppointment._id,
+      "APPOINTMENT"
+    );
 
-    res.status(201).json({
+    // Notify store owner — new booking arrived
+    await sendNotification(
+      store.owner,
+      "NEW_BOOKING",
+      `New booking received from a client. Queue #${queueNumber} on ${date} at ${time}.`,
+      "New Booking",
+      newAppointment._id,
+      "APPOINTMENT"
+    );
+
+    return res.status(201).json({
       message: "Booking created successfully",
       appointment: newAppointment,
       requiresDeposit: depositAmount > 0,
       depositAmount,
     });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    return res.status(500).json({ message: err.message });
   }
 };
 
@@ -123,9 +147,9 @@ exports.getStoreBookings = async (req, res) => {
       evening: bookings.filter((b) => parseInt(b.time.split(":")[0]) >= 18),
     };
 
-    res.json(categorized);
+    return res.json(categorized);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    return res.status(500).json({ message: err.message });
   }
 };
 
@@ -160,7 +184,6 @@ exports.cancelBooking = async (req, res) => {
     const minutesUntilAppointment = (appointmentTime - now) / (1000 * 60);
 
     let refundAmount = 0;
-
     if (minutesUntilAppointment >= allowedMinutes) {
       if (refundType === "FULL") {
         refundAmount = appointment.deposit;
@@ -177,16 +200,25 @@ exports.cancelBooking = async (req, res) => {
     appointment.cancelledBy = "CLIENT";
     await appointment.save();
 
-    // Notify store owner — booking cancelled
-    const io = req.app.get("io");
-    if (io) {
-      io.to(`store:${appointment.storeId}`).emit("bookingCancelled", {
-        type: "CANCELLATION",
-        message: "A booking has been cancelled by the client.",
-        appointmentId: appointment._id,
-        refundAmount,
-      });
-    }
+    // Notify client — booking cancelled
+    await sendNotification(
+      req.user.id,
+      "BOOKING_CANCELLED",
+      `Your booking at ${store.storeName} has been cancelled. Refund: ${refundAmount} EGP.`,
+      "Booking Cancelled",
+      appointment._id,
+      "APPOINTMENT"
+    );
+
+    // Notify store owner — booking cancelled by client
+    await sendNotification(
+      store.owner,
+      "CANCELLATION",
+      `A client cancelled their booking. Queue #${appointment.queueNumber}. Refund issued: ${refundAmount} EGP.`,
+      "Booking Cancelled",
+      appointment._id,
+      "APPOINTMENT"
+    );
 
     return success(res, "Booking cancelled successfully", {
       refundAmount,
