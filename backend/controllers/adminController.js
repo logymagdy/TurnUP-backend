@@ -1,18 +1,10 @@
 const Store = require("../models/storeModel");
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
 const ALLOWED_STORE_TYPES = ["barbershop", "beautySalon"];
 
-/**
- * Validates that the store has all required fields and documents
- * before an admin can approve it.
- * Returns an array of validation error strings (empty = valid).
- */
 const validateStoreForApproval = (store) => {
   const errors = [];
 
-  // ── Basic info checks ──────────────────────────────────────────────────
   if (!store.storeName || store.storeName.trim() === "") {
     errors.push("Store name is missing.");
   }
@@ -31,7 +23,6 @@ const validateStoreForApproval = (store) => {
     errors.push("Store location is missing.");
   }
 
-  // ── Document checks ────────────────────────────────────────────────────
   if (!store.approvalDocuments?.businessLicense) {
     errors.push("Required document is missing: businessLicense.");
   }
@@ -51,43 +42,27 @@ const validateStoreForApproval = (store) => {
   return errors;
 };
 
-// ─── Controllers ────────────────────────────────────────────────────────────
-
-/**
- * ADMIN — Approve or Reject a store registration
- *
- * Body:
- *   storeId  {string} — ID of the store to review
- *   action   {string} — "APPROVED" or "REJECTED"
- *   reason   {string} — Required when action is "REJECTED"
- *
- * Access: ADMIN only (enforced by authMiddleware)
- */
 exports.approveStore = async (req, res) => {
   try {
     const { storeId, action, reason } = req.body;
 
-    // ── 1. Validate action value ───────────────────────────────────────
     if (!["APPROVED", "REJECTED"].includes(action)) {
       return res.status(400).json({
         message: "Invalid action. Must be 'APPROVED' or 'REJECTED'.",
       });
     }
 
-    // ── 2. Find store ──────────────────────────────────────────────────
     const store = await Store.findById(storeId);
     if (!store) {
       return res.status(404).json({ message: "Store not found." });
     }
 
-    // ── 3. Ensure store is still PENDING ───────────────────────────────
     if (store.approvalStatus !== "PENDING") {
       return res.status(400).json({
         message: `Store is already ${store.approvalStatus}. Only PENDING stores can be reviewed.`,
       });
     }
 
-    // ── 4. Check for duplicate store (same owner, same name + type) ────
     const duplicate = await Store.findOne({
       _id: { $ne: storeId },
       owner: store.owner,
@@ -103,7 +78,6 @@ exports.approveStore = async (req, res) => {
       });
     }
 
-    // ── 5. Run document & data validation before approving ────────────
     const validationErrors = validateStoreForApproval(store);
 
     if (validationErrors.length > 0) {
@@ -114,7 +88,6 @@ exports.approveStore = async (req, res) => {
       });
     }
 
-    // ── 6. Handle REJECTED ─────────────────────────────────────────────
     if (action === "REJECTED") {
       if (!reason || reason.trim() === "") {
         return res.status(400).json({
@@ -132,11 +105,9 @@ exports.approveStore = async (req, res) => {
       });
     }
 
-    // ── 7. Handle APPROVED ─────────────────────────────────────────────
     store.approvalStatus = "APPROVED";
     store.rejectionReason = null;
 
-    // 2-month free trial starts from the approval date
     const trialStart = new Date();
     const trialEnd = new Date(trialStart);
     trialEnd.setMonth(trialEnd.getMonth() + 2);
