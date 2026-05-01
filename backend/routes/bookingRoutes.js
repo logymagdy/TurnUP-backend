@@ -9,9 +9,9 @@ const {
 const { protect, allowRoles } = require("../middleware/authMiddleware");
 
 // ─── CLIENT ROUTES ────────────────────────────────────────────────────────────
-router.post("/create", protect, createBooking);
-router.get("/my-bookings", protect, getMyBookings);
-router.put("/:bookingId/cancel", protect, cancelBooking);
+router.post("/create", protect, allowRoles("CLIENT"), createBooking);
+router.get("/my-bookings", protect, allowRoles("CLIENT"), getMyBookings);
+router.put("/:bookingId/cancel", protect, allowRoles("CLIENT"), cancelBooking);
 
 // ─── STORE ROUTES ─────────────────────────────────────────────────────────────
 router.get(
