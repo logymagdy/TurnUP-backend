@@ -10,6 +10,8 @@ const app = express();
 const server = http.createServer(app);
 
 // ─── SOCKET.IO ────────────────────────────────────────────────────────────────
+// Handles real-time store dashboard updates (queue, wait time, check-ins)
+// Push notifications to mobile devices handled via Expo push SDK
 const io = new Server(server, {
   cors: { origin: "*", methods: ["GET", "POST"] },
 });
@@ -19,11 +21,13 @@ app.set("io", io);
 io.on("connection", (socket) => {
   console.log(`🔌 Socket connected: ${socket.id}`);
 
+  // User joins personal room
   socket.on("join", (userId) => {
     socket.join(userId);
     console.log(`👤 User ${userId} joined their room`);
   });
 
+  // Store staff joins store room for live queue and wait time updates
   socket.on("joinStore", (storeId) => {
     socket.join(`store:${storeId}`);
     console.log(`🏪 Socket joined store room: ${storeId}`);
@@ -113,4 +117,4 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`🚀 TurnUP server running on port ${PORT}`);
-});
+});s
