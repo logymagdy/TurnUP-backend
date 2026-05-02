@@ -6,6 +6,9 @@ const { Server } = require("socket.io");
 const connectDB = require("./config/db");
 const { runQueueExpiryJob } = require("./services/queueExpiryJob");
 
+const swaggerUi = require("swagger-ui-express");
+const swaggerFile = require("./swagger-output.json");
+
 const app = express();
 const server = http.createServer(app);
 
