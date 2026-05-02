@@ -54,8 +54,9 @@ app.use(express.json());
 connectDB();
 
 // ─── QUEUE EXPIRY JOB — runs every 60 seconds ─────────────────────────────────
+// Passes io so expired bookings trigger real-time queue refresh on store dashboard
 setInterval(() => {
-  runQueueExpiryJob();
+  runQueueExpiryJob(io);
 }, 60 * 1000);
 
 // ─── ROUTES ───────────────────────────────────────────────────────────────────
@@ -117,4 +118,4 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`🚀 TurnUP server running on port ${PORT}`);
-});s
+});
