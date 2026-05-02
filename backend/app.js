@@ -53,11 +53,13 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// ─── SWAGGER DOCS ─────────────────────────────────────────────────────────────
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerFile));
+
 // ─── DATABASE ─────────────────────────────────────────────────────────────────
 connectDB();
 
 // ─── QUEUE EXPIRY JOB — runs every 60 seconds ─────────────────────────────────
-// Passes io so expired bookings trigger real-time queue refresh on store dashboard
 setInterval(() => {
   runQueueExpiryJob(io);
 }, 60 * 1000);
