@@ -5,7 +5,6 @@ const http = require("http");
 const { Server } = require("socket.io");
 const connectDB = require("./config/db");
 const { runQueueExpiryJob } = require("./services/queueExpiryJob");
-
 const swaggerUi = require("swagger-ui-express");
 const swaggerFile = require("./swagger-output.json");
 
@@ -53,11 +52,11 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// ─── SWAGGER DOCS ─────────────────────────────────────────────────────────────
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerFile));
-
 // ─── DATABASE ─────────────────────────────────────────────────────────────────
 connectDB();
+
+// ─── SWAGGER DOCS ─────────────────────────────────────────────────────────────
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerFile));
 
 // ─── QUEUE EXPIRY JOB — runs every 60 seconds ─────────────────────────────────
 setInterval(() => {
