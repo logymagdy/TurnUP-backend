@@ -573,3 +573,45 @@ exports.submitRating = async (req, res) => {
 
     const appointment = await Appointment.findById(bookingId);
     if (!appointment)
+      return res.status(404).json({ message: "Booking not found." });
+
+    if (String(appointment.client) !== String(req.user.id))
+      return res.status(403).json({ message: "Not authorized to rate this booking." });
+
+    if (appointment.status !== "DONE")
+      return res.status(400).json({ message: "You can only rate completed services." });
+
+    if (appointment.rating)
+      return res.status(400).json({ message: "You have already rated this booking." });
+
+    const now = new Date();
+    if (now > appointment.ratingDeadline)
+      return res.status(400).json({ message: "Rating window has expired (24 hours)." });
+
+    appointment.rating = rating;
+    appointment.review = review || null;
+    appointment.ratedAt = now;
+    await appointment.save();
+
+    // Recalculate stylist average rating dynamically
+    const stylistAppointments = await Appointment.find({
+      stylist: appointment.stylist,
+      rating: { $ne: null },
+    });
+
+    const avgRating =
+      stylistAppointments.reduce((sum, a) => sum + a.rating, 0) /
+      stylistAppointments.length;
+
+    await User.findByIdAndUpdate(appointment.stylist, {
+      rating: Math.round(avgRating * 10) / 10,
+    });
+
+    return res.status(200).json({
+      message: "Rating submitted successfully.",
+      rating,
+    });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
