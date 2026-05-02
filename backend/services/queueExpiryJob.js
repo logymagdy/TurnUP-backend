@@ -1,7 +1,7 @@
 const Appointment = require("../models/appointmentModel");
 const Store = require("../models/storeModel");
 const User = require("../models/userModel");
-const { sendNotification } = require("./notificationService");
+const { sendNotification } = require("./notificationServices");
 const { calculateLiveQueue } = require("./queueService");
 const { emitFullQueueRefresh } = require("./queueSocket");
 
