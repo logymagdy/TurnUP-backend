@@ -1,7 +1,7 @@
 const Promotion = require("../models/promotionModel");
 const Store = require("../models/storeModel");
 const User = require("../models/userModel");
-const { sendBulkNotification } = require("../services/notificationService");
+const { sendBulkNotification } = require("../services/notificationServices");
 
 // ─── CREATE PROMOTION ─────────────────────────────────────────────────────────
 exports.createPromotion = async (req, res) => {
