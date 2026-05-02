@@ -2,7 +2,7 @@ const Appointment = require("../models/appointmentModel");
 const Store = require("../models/storeModel");
 const User = require("../models/userModel");
 const { success, error } = require("../utils/responseHandler");
-const { sendNotification } = require("../services/notificationService");
+const { sendNotification } = require("../services/notificationServices");
 const { assignQueueSlot, calculateLiveQueue } = require("../services/queueService");
 const { emitQueueUpdate, emitFullQueueRefresh } = require("../services/queueSocket");
 
