@@ -6,7 +6,7 @@
     "version": "1.2.0"
   },
   "host": "localhost:3000",
-  "basePath": "/",
+  "basePath": "",
   "tags": [
     {
       "name": "Auth",
@@ -62,8 +62,7 @@
     }
   ],
   "schemes": [
-    "http",
-    "https"
+    "http"
   ],
   "securityDefinitions": {
     "bearerAuth": {
