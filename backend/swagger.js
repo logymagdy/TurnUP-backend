@@ -8,7 +8,6 @@ const doc = {
     version: "1.2.0",
   },
 
-  // 🔥 Works locally + on Vercel
   host: process.env.VERCEL_URL
     ? process.env.VERCEL_URL
     : "localhost:3000",
@@ -62,5 +61,5 @@ const routes = [
   "./routes/adminRoutes.js",
 ];
 
-// 🔥 Generate swagger file
+//  Generate swagger file
 swaggerAutogen(outputFile, routes, doc);
