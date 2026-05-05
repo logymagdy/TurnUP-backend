@@ -4,16 +4,12 @@ const cors = require("cors");
 const http = require("http");
 const { Server } = require("socket.io");
 const connectDB = require("./config/db");
-const { runQueueExpiryJob } = require("./services/queueExpiryJob");
-const swaggerUi = require("swagger-ui-express");
-const swaggerFile = require("./swagger-output.json");
 
+// ─── APP SETUP ────────────────────────────────────────────────────────────────
 const app = express();
 const server = http.createServer(app);
 
 // ─── SOCKET.IO ────────────────────────────────────────────────────────────────
-// Handles real-time store dashboard updates (queue, wait time, check-ins)
-// Push notifications to mobile devices handled via Expo push SDK
 const io = new Server(server, {
   cors: { origin: "*", methods: ["GET", "POST"] },
 });
@@ -23,13 +19,11 @@ app.set("io", io);
 io.on("connection", (socket) => {
   console.log(`🔌 Socket connected: ${socket.id}`);
 
-  // User joins personal room
   socket.on("join", (userId) => {
     socket.join(userId);
     console.log(`👤 User ${userId} joined their room`);
   });
 
-  // Store staff joins store room for live queue and wait time updates
   socket.on("joinStore", (storeId) => {
     socket.join(`store:${storeId}`);
     console.log(`🏪 Socket joined store room: ${storeId}`);
@@ -56,12 +50,23 @@ app.use(express.json());
 connectDB();
 
 // ─── SWAGGER DOCS ─────────────────────────────────────────────────────────────
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerFile));
+try {
+  const swaggerUi = require("swagger-ui-express");
+  const swaggerFile = require("./swagger-output.json");
+  app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerFile));
+} catch (e) {
+  console.log("Swagger not available yet — run npm run swagger first");
+}
 
-// ─── QUEUE EXPIRY JOB — runs every 60 seconds ─────────────────────────────────
-setInterval(() => {
-  runQueueExpiryJob(io);
-}, 60 * 1000);
+// ─── QUEUE EXPIRY JOB ─────────────────────────────────────────────────────────
+try {
+  const { runQueueExpiryJob } = require("./services/queueExpiryJob");
+  setInterval(() => {
+    runQueueExpiryJob(io);
+  }, 60 * 1000);
+} catch (e) {
+  console.log("Queue expiry job not available yet");
+}
 
 // ─── ROUTES ───────────────────────────────────────────────────────────────────
 
@@ -77,10 +82,20 @@ app.use("/api/salons",        require("./routes/storeRoutes"));
 app.use("/api/queue",         require("./routes/queueRoutes"));
 app.use("/api/booking",       require("./routes/bookingRoutes"));
 app.use("/api/bookings",      require("./routes/bookingRoutes"));
-app.use("/api/checkin",       require("./routes/checkInRoutes"));
+
+// Check-in
+try {
+  app.use("/api/checkin", require("./routes/checkInRoutes"));
+} catch (e) {
+  console.log("checkInRoutes not available yet");
+}
 
 // Notifications
-app.use("/api/notifications", require("./routes/notificationRoutes"));
+try {
+  app.use("/api/notifications", require("./routes/notificationRoutes"));
+} catch (e) {
+  console.log("notificationRoutes not available yet");
+}
 
 // Payments & Marketing
 app.use("/api/payment",       require("./routes/paymentRoutes"));
@@ -124,4 +139,5 @@ server.listen(PORT, () => {
   console.log(` TurnUP server running on port ${PORT}`);
 });
 
+// ─── EXPORT FOR VERCEL ────────────────────────────────────────────────────────
 module.exports = app;
