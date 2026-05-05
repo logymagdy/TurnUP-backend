@@ -4,6 +4,7 @@ const cors = require("cors");
 const http = require("http");
 const { Server } = require("socket.io");
 const connectDB = require("./config/db");
+const path = require("path"); // ✅ added for safe path handling
 
 // ─── APP SETUP ────────────────────────────────────────────────────────────────
 const app = express();
@@ -49,13 +50,19 @@ app.use(express.json());
 // ─── DATABASE ─────────────────────────────────────────────────────────────────
 connectDB();
 
-// ─── SWAGGER DOCS ─────────────────────────────────────────────────────────────
+// ─── SWAGGER DOCS (FIXED FOR VERCEL) ──────────────────────────────────────────
 try {
   const swaggerUi = require("swagger-ui-express");
-  const swaggerFile = require("./swagger-output.json");
+
+  // ✅ robust path (works locally + Vercel)
+  const swaggerPath = path.resolve(__dirname, "./swagger-output.json");
+  const swaggerFile = require(swaggerPath);
+
+  console.log("Swagger loaded from:", swaggerPath); // debug log
+
   app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerFile));
 } catch (e) {
-  console.log("Swagger not available yet — run npm run swagger first");
+  console.log("Swagger not available yet — check swagger-output.json path");
 }
 
 // ─── QUEUE EXPIRY JOB ─────────────────────────────────────────────────────────
