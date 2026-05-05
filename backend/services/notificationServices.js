@@ -1,4 +1,4 @@
-const { Expo } = require("expo-server-sdk");
+const { Expo } = import("expo-server-sdk");
 const Notification = require("../models/notificationModel");
 const User = require("../models/userModel");
 
