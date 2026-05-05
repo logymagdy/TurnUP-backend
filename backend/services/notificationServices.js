@@ -1,19 +1,21 @@
-const { Expo } = import("expo-server-sdk");
 const Notification = require("../models/notificationModel");
 const User = require("../models/userModel");
 
-const expo = new Expo();
+let expo;
+
+/**
+ * Lazy-load Expo (fixes ERR_REQUIRE_ESM)
+ */
+const getExpo = async () => {
+  if (!expo) {
+    const { Expo } = await import("expo-server-sdk");
+    expo = new Expo();
+  }
+  return expo;
+};
 
 /**
  * Sends an Expo push notification AND saves it to DB
- *
- * @param {string} userId         - Recipient user ID
- * @param {string} type           - Notification type (must match enum in notificationModel)
- * @param {string} message        - Notification body text
- * @param {string} title          - Notification title shown on device
- * @param {string} referenceId    - Optional: related document ID
- * @param {string} referenceType  - Optional: QUEUE | APPOINTMENT | STORE | PAYMENT
- * @param {object} data           - Optional: extra data payload sent to mobile app
  */
 const sendNotification = async (
   userId,
@@ -25,6 +27,8 @@ const sendNotification = async (
   data = {}
 ) => {
   try {
+    const expo = await getExpo();
+
     // ── 1. Save notification to DB ─────────────────────────────────────
     await Notification.create({
       userId,
@@ -77,7 +81,6 @@ const sendNotification = async (
 
 /**
  * Sends the same notification to multiple users at once
- * @param {string[]} userIds - Array of user IDs
  */
 const sendBulkNotification = async (
   userIds,
@@ -89,6 +92,8 @@ const sendBulkNotification = async (
   data = {}
 ) => {
   try {
+    const expo = await getExpo();
+
     // ── 1. Save all notifications to DB in one operation ───────────────
     const notificationDocs = userIds.map((userId) => ({
       userId,
@@ -123,6 +128,7 @@ const sendBulkNotification = async (
 
     // ── 4. Send in chunks ──────────────────────────────────────────────
     const chunks = expo.chunkPushNotifications(messages);
+
     for (const chunk of chunks) {
       try {
         const receipts = await expo.sendPushNotificationsAsync(chunk);
