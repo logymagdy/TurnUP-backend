@@ -13,9 +13,7 @@ const doc = {
     ? process.env.VERCEL_URL
     : "localhost:3000",
 
-  // 🔥 CRITICAL FIX
-  basePath: "/api",
-
+basePath: "",
   schemes: process.env.VERCEL_URL ? ["https"] : ["http"],
 
   securityDefinitions: {
