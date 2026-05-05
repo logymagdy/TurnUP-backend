@@ -3,12 +3,21 @@ const swaggerAutogen = require("swagger-autogen")();
 const doc = {
   info: {
     title: "TurnUP API",
-    description: "Smart queue and booking management system for barbershops and beauty salons",
+    description:
+      "Smart queue and booking management system for barbershops and beauty salons",
     version: "1.2.0",
   },
-  host: "localhost:3000",
-  basePath: "/",
-  schemes: ["http", "https"],
+
+  // 🔥 Works locally + on Vercel
+  host: process.env.VERCEL_URL
+    ? process.env.VERCEL_URL
+    : "localhost:3000",
+
+  // 🔥 CRITICAL FIX
+  basePath: "/api",
+
+  schemes: process.env.VERCEL_URL ? ["https"] : ["http"],
+
   securityDefinitions: {
     bearerAuth: {
       type: "apiKey",
@@ -17,7 +26,9 @@ const doc = {
       description: "Enter your JWT token as: Bearer <token>",
     },
   },
+
   security: [{ bearerAuth: [] }],
+
   tags: [
     { name: "Auth", description: "Authentication and registration" },
     { name: "Users", description: "User profile management" },
@@ -53,4 +64,5 @@ const routes = [
   "./routes/adminRoutes.js",
 ];
 
+// 🔥 Generate swagger file
 swaggerAutogen(outputFile, routes, doc);
