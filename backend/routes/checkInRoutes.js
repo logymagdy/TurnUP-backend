@@ -1,5 +1,7 @@
 const express = require("express");
 const router = express.Router();
+// #swagger.tags = ['Check-In']
+
 const { checkIn } = require("../controllers/checkInController");
 const { protect, allowRoles } = require("../middleware/authMiddleware");
 
