@@ -5,8 +5,8 @@
     "description": "Smart queue and booking management system for barbershops and beauty salons",
     "version": "1.2.0"
   },
-  "host": "localhost:3000",
-  "basePath": "",
+  "host": "turnup-backend-j5nf.onrender.com",
+  "basePath": "/api/auth",
   "tags": [
     {
       "name": "Auth",
