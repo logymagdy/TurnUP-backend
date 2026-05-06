@@ -62,4 +62,7 @@ const routes = [
 ];
 
 //  Generate swagger file
-swaggerAutogen(outputFile, routes, doc);
+(async () => {
+  await swaggerAutogen(outputFile, routes, doc);
+  console.log("Swagger documentation generated successfully!");
+})();
