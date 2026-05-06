@@ -15,8 +15,7 @@ const {
 } = require("../controllers/authController");
 const { protect } = require("../middleware/authMiddleware");
 
-// ─── PUBLIC ROUTES ───────────────────────────────────────────────────────────
-
+// #swagger.tags = ['Auth']
 router.post("/register", registerUser);
 router.post("/login", loginUser);
 router.post("/google", googleLogin);
