@@ -28,7 +28,7 @@ const {
 } = require("../controllers/storeController");
 const { protect, allowRoles } = require("../middleware/authMiddleware");
 
-// ─── PUBLIC ROUTES ────────────────────────────────────────────────────────────
+// #swagger.tags = ['Store']
 router.get("/search", searchStores);
 router.get("/public/:storeId", getPublicStore);
 
