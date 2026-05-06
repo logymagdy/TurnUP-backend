@@ -14,6 +14,8 @@ const {
 const { protect, allowRoles } = require("../middleware/authMiddleware");
 
 // ─── CLIENT ROUTES ────────────────────────────────────────────────────────────
+// #swagger.tags = ['Booking']
+
 router.post("/create", protect, allowRoles("CLIENT"), createBooking);
 router.get("/my-bookings", protect, allowRoles("CLIENT"), getMyBookings);
 router.put("/:bookingId/cancel", protect, allowRoles("CLIENT"), cancelBooking);
