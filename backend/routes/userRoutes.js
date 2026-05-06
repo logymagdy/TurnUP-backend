@@ -10,9 +10,7 @@ const {
 } = require("../controllers/authController"); 
 const { protect } = require("../middleware/authMiddleware");
 
-// All routes here are prefixed with /api/users in your app.js
-// And all require the user to be logged in (protect)
-
+// #swagger.tags = ['Users']
 /**
  * @route   GET /api/users/me
  * @desc    Get current user profile
