@@ -4,7 +4,7 @@ const cors = require("cors");
 const http = require("http");
 const { Server } = require("socket.io");
 const connectDB = require("./config/db");
-const path = require("path"); // ✅ added for safe path handling
+const path = require("path");
 
 // ─── APP SETUP ────────────────────────────────────────────────────────────────
 const app = express();
@@ -45,20 +45,38 @@ app.use(cors({
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
   allowedHeaders: ["Content-Type", "Authorization"],
 }));
+
 app.use(express.json());
 
 // ─── DATABASE ─────────────────────────────────────────────────────────────────
 connectDB();
 
-// ─── SWAGGER DOCS (FIXED FOR VERCEL) ──────────────────────────────────────────
+// ─── PORT ─────────────────────────────────────────────────────────────────────
+const PORT = process.env.PORT || 3000;
+
+// ─── SWAGGER DOCS (FIXED FOR RENDER) ──────────────────────────────────────────
 try {
   const swaggerUi = require("swagger-ui-express");
 
-  // ✅ robust path (works locally + Vercel)
   const swaggerPath = path.resolve(__dirname, "./swagger-output.json");
   const swaggerFile = require(swaggerPath);
 
-  console.log("Swagger loaded from:", swaggerPath); // debug log
+  // ✅ FIX HOST
+  swaggerFile.host =
+    process.env.NODE_ENV === "production"
+      ? "turnup-backend-j5nf.onrender.com"
+      : `localhost:${PORT}`;
+
+  // ✅ FIX SCHEME
+  swaggerFile.schemes =
+    process.env.NODE_ENV === "production"
+      ? ["https"]
+      : ["http"];
+
+  // ✅ IMPORTANT
+  swaggerFile.basePath = "/api/auth";
+
+  console.log("Swagger loaded from:", swaggerPath);
 
   app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerFile));
 } catch (e) {
@@ -68,6 +86,7 @@ try {
 // ─── QUEUE EXPIRY JOB ─────────────────────────────────────────────────────────
 try {
   const { runQueueExpiryJob } = require("./services/queueExpiryJob");
+
   setInterval(() => {
     runQueueExpiryJob(io);
   }, 60 * 1000);
@@ -78,17 +97,17 @@ try {
 // ─── ROUTES ───────────────────────────────────────────────────────────────────
 
 // Auth & Users
-app.use("/api/auth",          require("./routes/authRoutes"));
-app.use("/api/users",         require("./routes/userRoutes"));
+app.use("/api/auth", require("./routes/authRoutes"));
+app.use("/api/users", require("./routes/userRoutes"));
 
 // Store & Discovery
-app.use("/api/store",         require("./routes/storeRoutes"));
-app.use("/api/salons",        require("./routes/storeRoutes"));
+app.use("/api/store", require("./routes/storeRoutes"));
+app.use("/api/salons", require("./routes/storeRoutes"));
 
 // Operations
-app.use("/api/queue",         require("./routes/queueRoutes"));
-app.use("/api/booking",       require("./routes/bookingRoutes"));
-app.use("/api/bookings",      require("./routes/bookingRoutes"));
+app.use("/api/queue", require("./routes/queueRoutes"));
+app.use("/api/booking", require("./routes/bookingRoutes"));
+app.use("/api/bookings", require("./routes/bookingRoutes"));
 
 // Check-in
 try {
@@ -105,24 +124,26 @@ try {
 }
 
 // Payments & Marketing
-app.use("/api/payment",       require("./routes/paymentRoutes"));
-app.use("/api/payments",      require("./routes/paymentRoutes"));
-app.use("/api/loyalty",       require("./routes/loyaltyRoutes"));
-app.use("/api/promotion",     require("./routes/promotionRoutes"));
-app.use("/api/complaint",     require("./routes/complaintRoutes"));
+app.use("/api/payment", require("./routes/paymentRoutes"));
+app.use("/api/payments", require("./routes/paymentRoutes"));
+app.use("/api/loyalty", require("./routes/loyaltyRoutes"));
+app.use("/api/promotion", require("./routes/promotionRoutes"));
+app.use("/api/complaint", require("./routes/complaintRoutes"));
 
 // Admin & Analytics
-app.use("/api/analytics",     require("./routes/analyticsRoutes"));
-app.use("/api/admin",         require("./routes/adminRoutes"));
+app.use("/api/analytics", require("./routes/analyticsRoutes"));
+app.use("/api/admin", require("./routes/adminRoutes"));
 
 // ─── HEALTH CHECK ─────────────────────────────────────────────────────────────
-app.get("/", (req, res) => res.json({
-  message: "TurnUP API running ✅",
-  version: "1.2.0",
-  status: "Fully Operational",
-}));
+app.get("/", (req, res) => {
+  res.json({
+    message: "TurnUP API running ✅",
+    version: "1.2.0",
+    status: "Fully Operational",
+  });
+});
 
-// ─── 404 HANDLER ─────────────────────────────────────────────────────────────
+// ─── 404 HANDLER ──────────────────────────────────────────────────────────────
 app.use((req, res) => {
   res.status(404).json({
     success: false,
@@ -133,18 +154,21 @@ app.use((req, res) => {
 // ─── GLOBAL ERROR HANDLER ─────────────────────────────────────────────────────
 app.use((err, req, res, next) => {
   console.error("Critical Error:", err.stack);
+
   res.status(500).json({
     success: false,
     message: "Internal server error",
-    error: process.env.NODE_ENV === "development" ? err.message : undefined,
+    error:
+      process.env.NODE_ENV === "development"
+        ? err.message
+        : undefined,
   });
 });
 
 // ─── START SERVER ─────────────────────────────────────────────────────────────
-const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(` TurnUP server running on port ${PORT}`);
+  console.log(`🚀 TurnUP server running on port ${PORT}`);
 });
 
-// ─── EXPORT FOR VERCEL ────────────────────────────────────────────────────────
+// ─── EXPORT FOR RENDER ────────────────────────────────────────────────────────
 module.exports = app;
