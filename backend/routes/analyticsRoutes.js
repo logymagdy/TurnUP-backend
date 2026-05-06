@@ -1,5 +1,7 @@
 const express = require("express");
 const router = express.Router();
+// #swagger.tags = ['Analytics']
+
 const { getStoreAnalytics } = require("../controllers/analyticsController");
 const { protect, allowRoles } = require("../middleware/authMiddleware");
 
