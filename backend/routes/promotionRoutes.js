@@ -1,5 +1,7 @@
 const express = require("express");
 const router = express.Router();
+// #swagger.tags = ['Promotions']
+
 const {
   createPromotion,
   getStorePromotions,
