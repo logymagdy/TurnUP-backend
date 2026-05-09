@@ -19,7 +19,7 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: false,
       minlength: 8,
-      select: false,
+      select: false, // ✅ keep this — but fix queries to use +password
     },
     role: {
       type: String,
@@ -51,20 +51,11 @@ const userSchema = new mongoose.Schema(
       enum: ["MEN", "WOMEN", null],
       default: null,
     },
-
-    // Profile Information - Synced with image_76c1ac.png
-    mobileNumber: { 
-      type: String, 
-      default: null 
-    },
-
-    // Geolocation
+    mobileNumber: { type: String, default: null },
     location: {
       type: { type: String, enum: ["Point"], default: "Point" },
       coordinates: { type: [Number], default: [0, 0] },
     },
-
-    // Favorites & Loyalty
     favorites: [{ type: mongoose.Schema.Types.ObjectId, ref: "Store" }],
     loyaltyPoints: { type: Number, default: 0 },
     loyaltyTier: {
@@ -72,25 +63,18 @@ const userSchema = new mongoose.Schema(
       enum: ["BRONZE", "SILVER", "GOLD"],
       default: "BRONZE",
     },
-
-    // Referral System
     referralCode: { type: String, unique: true, sparse: true },
     referredBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       default: null,
     },
-
-    // Financial & Stats
     debt: { type: Number, default: 0 },
     savedCard: { type: String, default: null },
     visitCount: { type: Number, default: 0 },
     instapayNumber: { type: String, default: null },
-
-    // App & Push Settings
     expoPushToken: { type: String, default: null },
     language: { type: String, default: "en" },
-
     notificationSettings: {
       booking: {
         newBooking: { type: Boolean, default: true },
