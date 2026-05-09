@@ -33,7 +33,7 @@ const transporter = nodemailer.createTransport({
 exports.registerUser = async (req, res) => {
   try {
     const {
-      name,
+      username, // Replaced 'name' with 'username' as per image_92077a.png
       email,
       password,
       role,
@@ -70,7 +70,7 @@ exports.registerUser = async (req, res) => {
     }
 
     const newUser = new User({
-      name,
+      username, // Mapped to the optional username field
       email,
       password,
       phone,
