@@ -3,10 +3,10 @@ const bcrypt = require("bcryptjs");
 
 const userSchema = new mongoose.Schema(
   {
-    name: {
+    username: {
       type: String,
-      required: [true, "Name is required"],
       trim: true,
+      default: null, // Optional field
     },
     email: {
       type: String,
@@ -53,26 +53,28 @@ const userSchema = new mongoose.Schema(
     },
 
     // Profile Information
-    fullName: { type: String, trim: true, default: null },
-    mobileNumber: { type: String, default: null },
-    dateOfBirth: { type: Date, default: null },
+    mobileNumber: { 
+      type: String, 
+      default: null 
+    },
     gender: {
       type: String,
-      enum: ["Male", "Female", "Other", null],
+      enum: ["Male", "Female", null], // Strictly Male or Female
       default: null,
     },
-    address: { type: String, default: null },
+    address: { 
+      type: String, 
+      default: null 
+    },
 
-    // Geolocation
+    // Geolocation for maps/distance
     location: {
       type: { type: String, enum: ["Point"], default: "Point" },
       coordinates: { type: [Number], default: [0, 0] },
     },
 
-    // Favorites
+    // Favorites & Loyalty
     favorites: [{ type: mongoose.Schema.Types.ObjectId, ref: "Store" }],
-
-    // Loyalty
     loyaltyPoints: { type: Number, default: 0 },
     loyaltyTier: {
       type: String,
@@ -80,7 +82,7 @@ const userSchema = new mongoose.Schema(
       default: "BRONZE",
     },
 
-    // Referral
+    // Referral System
     referralCode: { type: String, unique: true, sparse: true },
     referredBy: {
       type: mongoose.Schema.Types.ObjectId,
@@ -88,19 +90,17 @@ const userSchema = new mongoose.Schema(
       default: null,
     },
 
-    // Financial
+    // Financial & Stats
     debt: { type: Number, default: 0 },
     savedCard: { type: String, default: null },
     visitCount: { type: Number, default: 0 },
     instapayNumber: { type: String, default: null },
 
-    // Expo Push Notifications
+    // App & Push Settings
     expoPushToken: { type: String, default: null },
-
-    // App Settings
     language: { type: String, default: "en" },
 
-    // Notification Settings
+    // Detailed Notification Settings
     notificationSettings: {
       booking: {
         newBooking: { type: Boolean, default: true },
@@ -131,10 +131,10 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Geospatial index
+// Enable geospatial queries
 userSchema.index({ location: "2dsphere" });
 
-// Hash password before save
+// Hash password before saving
 userSchema.pre("save", async function (next) {
   if (!this.isModified("password") || !this.password) return next();
   const salt = await bcrypt.genSalt(12);
@@ -142,6 +142,7 @@ userSchema.pre("save", async function (next) {
   next();
 });
 
+// Helper to check password validity
 userSchema.methods.comparePassword = async function (candidatePassword) {
   if (!this.password) return false;
   return await bcrypt.compare(candidatePassword, this.password);
