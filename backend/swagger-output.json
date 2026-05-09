@@ -83,7 +83,7 @@
             "schema": {
               "type": "object",
               "properties": {
-                "name": {
+                "username": {
                   "example": "any"
                 },
                 "email": {
@@ -167,13 +167,7 @@
             "schema": {
               "type": "object",
               "properties": {
-                "email": {
-                  "example": "any"
-                },
-                "name": {
-                  "example": "any"
-                },
-                "socialId": {
+                "provider": {
                   "example": "any"
                 }
               }
@@ -181,14 +175,8 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "OK"
-          },
           "400": {
             "description": "Bad Request"
-          },
-          "500": {
-            "description": "Internal Server Error"
           }
         }
       }
@@ -203,13 +191,7 @@
             "schema": {
               "type": "object",
               "properties": {
-                "email": {
-                  "example": "any"
-                },
-                "name": {
-                  "example": "any"
-                },
-                "socialId": {
+                "provider": {
                   "example": "any"
                 }
               }
@@ -217,14 +199,8 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "OK"
-          },
           "400": {
             "description": "Bad Request"
-          },
-          "500": {
-            "description": "Internal Server Error"
           }
         }
       }
@@ -241,29 +217,14 @@
               "properties": {
                 "provider": {
                   "example": "any"
-                },
-                "email": {
-                  "example": "any"
-                },
-                "name": {
-                  "example": "any"
-                },
-                "socialId": {
-                  "example": "any"
                 }
               }
             }
           }
         ],
         "responses": {
-          "200": {
-            "description": "OK"
-          },
           "400": {
             "description": "Bad Request"
-          },
-          "500": {
-            "description": "Internal Server Error"
           }
         }
       }

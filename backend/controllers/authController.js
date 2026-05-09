@@ -35,10 +35,7 @@ const transporter = nodemailer.createTransport({
 });
 
 // ─── REGISTER ─────────────────────────────────────────────────────────────────
-// POST /api/auth/register
-// Frontend sends: { username, email, password, role, phone, servicePreference?, referralCode? }
-// Role must be explicitly chosen by user — no default assignment
-exports.registerUser = async (req, res) => {
+exports.registerUser = async (req, res, next) => {
   try {
     const {
       username,
@@ -50,33 +47,26 @@ exports.registerUser = async (req, res) => {
       referralCode: incomingReferralCode,
     } = req.body;
 
-    // ── Step 1: Block ADMIN self-registration
     if (role === "ADMIN")
       return res.status(403).json({ message: "Forbidden" });
 
-    // ── Step 2: Validate role BEFORE anything else
     if (!role || !ALL_ALLOWED_ROLES.includes(role))
       return res.status(400).json({
         message: `Invalid role. Must be one of: ${ALL_ALLOWED_ROLES.join(", ")}`,
       });
 
-    // ── Step 3: Check duplicate email
     const existingUser = await User.findOne({ email });
     if (existingUser)
       return res.status(400).json({ message: "User already exists" });
 
-    // ── Step 4: Build user data based on role track
     const isClientTrack = CLIENT_ROLES.includes(role);
-    const isBusinessTrack = BUSINESS_ROLES.includes(role);
 
-    // ── Step 5: Handle referral (CLIENT only)
     let referredBy = null;
     if (isClientTrack && incomingReferralCode) {
       const referrer = await User.findOne({ referralCode: incomingReferralCode });
       if (referrer) referredBy = referrer._id;
     }
 
-    // ── Step 6: Generate referral code (CLIENT only)
     let newReferralCode = null;
     if (isClientTrack) {
       let unique = false;
@@ -87,18 +77,15 @@ exports.registerUser = async (req, res) => {
       }
     }
 
-    // ── Step 7: Create user
     const newUser = new User({
       username,
       email,
       password,
       phone,
       role,
-      // CLIENT only fields
       servicePreference: isClientTrack ? servicePreference : null,
       referralCode: isClientTrack ? newReferralCode : null,
       referredBy: isClientTrack ? referredBy : null,
-      // Business track — storeId linked later by serviceProvider
       storeId: null,
     });
 
@@ -115,16 +102,15 @@ exports.registerUser = async (req, res) => {
       referralCode: isClientTrack ? newReferralCode : null,
     });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    next(err);
   }
 };
 
 // ─── LOGIN ────────────────────────────────────────────────────────────────────
-exports.loginUser = async (req, res) => {
+exports.loginUser = async (req, res, next) => {
   try {
     const { email, password } = req.body;
 
-    // Must use .select("+password") because select: false in model
     const user = await User.findOne({ email }).select("+password");
     if (!user || !(await user.comparePassword(password)))
       return res.status(400).json({ message: "Invalid credentials" });
@@ -143,13 +129,12 @@ exports.loginUser = async (req, res) => {
       track: CLIENT_ROLES.includes(user.role) ? "CLIENT" : "BUSINESS",
     });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    next(err);
   }
 };
 
-// ─── SOCIAL LOGIN (unified — handles google and facebook) ─────────────────────
-// googleLogin and facebookLogin both call this same logic
-const handleSocialLogin = async (req, res, provider) => {
+// ─── SOCIAL LOGIN ─────────────────────────────────────────────────────────────
+const handleSocialLogin = async (req, res, next, provider) => {
   try {
     const { email, name, socialId } = req.body;
     if (!email || !name || !socialId)
@@ -158,7 +143,6 @@ const handleSocialLogin = async (req, res, provider) => {
     let user = await User.findOne({ email });
 
     if (!user) {
-      // Social login always creates CLIENT account
       user = new User({
         username: name,
         email,
@@ -185,41 +169,47 @@ const handleSocialLogin = async (req, res, provider) => {
       track: "CLIENT",
     });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    next(err);
   }
 };
 
-exports.googleLogin = (req, res) => handleSocialLogin(req, res, "google");
-exports.facebookLogin = (req, res) => handleSocialLogin(req, res, "facebook");
-exports.socialLogin = (req, res) => {
+exports.googleLogin = (req, res, next) => handleSocialLogin(req, res, next, "google");
+exports.facebookLogin = (req, res, next) => handleSocialLogin(req, res, next, "facebook");
+exports.socialLogin = (req, res, next) => {
   const { provider } = req.body;
   if (!provider)
     return res.status(400).json({ message: "provider is required" });
-  return handleSocialLogin(req, res, provider);
+  return handleSocialLogin(req, res, next, provider);
 };
 
 // ─── LOGOUT & TOKEN ───────────────────────────────────────────────────────────
-exports.logout = async (req, res) => {
-  res.json({ message: "Logged out successfully" });
+exports.logout = async (req, res, next) => {
+  try {
+    res.json({ message: "Logged out successfully" });
+  } catch (err) {
+    next(err);
+  }
 };
 
-exports.refreshToken = async (req, res) => {
-  const { refreshToken } = req.body;
-  if (!refreshToken)
-    return res.status(401).json({ message: "No refresh token" });
+exports.refreshToken = async (req, res, next) => {
   try {
+    const { refreshToken } = req.body;
+    if (!refreshToken)
+      return res.status(401).json({ message: "No refresh token" });
+
     const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
     const user = await User.findById(decoded.id);
     if (!user) return res.status(401).json({ message: "User not found" });
+
     const newToken = generateToken(user._id, user.role, user.storeId);
     res.json({ token: newToken });
   } catch (err) {
-    res.status(401).json({ message: "Invalid refresh token" });
+    next(err);
   }
 };
 
 // ─── PROFILE ──────────────────────────────────────────────────────────────────
-exports.getProfile = async (req, res) => {
+exports.getProfile = async (req, res, next) => {
   try {
     const user = await User.findById(req.user.id)
       .select("-password -otp -otpExpiry")
@@ -227,16 +217,15 @@ exports.getProfile = async (req, res) => {
     if (!user) return res.status(404).json({ message: "User not found" });
     res.json(user);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    next(err);
   }
 };
 
-exports.updateProfile = async (req, res) => {
+exports.updateProfile = async (req, res, next) => {
   try {
-    // ✅ Only phone — no more mobileNumber confusion
     const allowedUpdates = [
       "username",
-      "phone",        // unified field
+      "phone",
       "instapayNumber",
       "servicePreference",
       "language",
@@ -255,11 +244,11 @@ exports.updateProfile = async (req, res) => {
 
     res.json({ message: "Profile updated successfully", user });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    next(err);
   }
 };
 
-exports.updateAvatar = async (req, res) => {
+exports.updateAvatar = async (req, res, next) => {
   try {
     const { avatar } = req.body;
     const user = await User.findByIdAndUpdate(
@@ -269,11 +258,11 @@ exports.updateAvatar = async (req, res) => {
     ).select("-password");
     res.json({ message: "Avatar updated", user });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    next(err);
   }
 };
 
-exports.updateLocation = async (req, res) => {
+exports.updateLocation = async (req, res, next) => {
   try {
     const { coordinates } = req.body;
     const user = await User.findByIdAndUpdate(
@@ -283,21 +272,20 @@ exports.updateLocation = async (req, res) => {
     ).select("-password");
     res.json({ message: "Location updated", user });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    next(err);
   }
 };
 
-exports.deleteAccount = async (req, res) => {
+exports.deleteAccount = async (req, res, next) => {
   try {
     await User.findByIdAndDelete(req.user.id);
     res.json({ message: "Account deleted successfully" });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    next(err);
   }
 };
 
-// ─── SETTINGS ─────────────────────────────────────────────────────────────────
-exports.updateNotificationSettings = async (req, res) => {
+exports.updateNotificationSettings = async (req, res, next) => {
   try {
     const user = await User.findByIdAndUpdate(
       req.user.id,
@@ -309,17 +297,16 @@ exports.updateNotificationSettings = async (req, res) => {
       settings: user.notificationSettings,
     });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    next(err);
   }
 };
 
-exports.updatePassword = async (req, res) => {
+exports.updatePassword = async (req, res, next) => {
   try {
     const { currentPassword, newPassword } = req.body;
     if (!currentPassword || !newPassword)
       return res.status(400).json({ message: "Current and new password required" });
 
-    // Must use .select("+password") because select: false in model
     const user = await User.findById(req.user.id).select("+password");
     if (!user || !(await user.comparePassword(currentPassword)))
       return res.status(400).json({ message: "Current password is incorrect" });
@@ -328,12 +315,12 @@ exports.updatePassword = async (req, res) => {
     await user.save();
     res.json({ message: "Password updated successfully" });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    next(err);
   }
 };
 
-// ─── PASSWORD RESET (OTP) ─────────────────────────────────────────────────────
-exports.forgotPassword = async (req, res) => {
+// ─── PASSWORD RESET ───────────────────────────────────────────────────────────
+exports.forgotPassword = async (req, res, next) => {
   try {
     const { email } = req.body;
     const user = await User.findOne({ email });
@@ -360,11 +347,11 @@ exports.forgotPassword = async (req, res) => {
 
     res.json({ message: "OTP sent to your email" });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    next(err);
   }
 };
 
-exports.verifyOtp = async (req, res) => {
+exports.verifyOtp = async (req, res, next) => {
   try {
     const { email, otp } = req.body;
     const user = await User.findOne({
@@ -376,11 +363,11 @@ exports.verifyOtp = async (req, res) => {
       return res.status(400).json({ message: "Invalid or expired OTP" });
     res.json({ message: "OTP verified successfully" });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    next(err);
   }
 };
 
-exports.resetPassword = async (req, res) => {
+exports.resetPassword = async (req, res, next) => {
   try {
     const { email, otp, newPassword } = req.body;
     const user = await User.findOne({
@@ -397,11 +384,11 @@ exports.resetPassword = async (req, res) => {
     await user.save();
     res.json({ message: "Password reset successfully" });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    next(err);
   }
 };
 
-exports.resendOtp = async (req, res) => {
+exports.resendOtp = async (req, res, next) => {
   try {
     const { email } = req.body;
     const user = await User.findOne({ email });
@@ -427,6 +414,6 @@ exports.resendOtp = async (req, res) => {
     });
     res.json({ message: "New OTP sent" });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    next(err);
   }
 };
