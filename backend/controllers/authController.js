@@ -33,7 +33,7 @@ const transporter = nodemailer.createTransport({
 exports.registerUser = async (req, res) => {
   try {
     const {
-      username, 
+      username,
       email,
       password,
       role,
@@ -70,7 +70,7 @@ exports.registerUser = async (req, res) => {
     }
 
     const newUser = new User({
-      username, 
+      username,
       email,
       password,
       phone,
@@ -98,7 +98,9 @@ exports.registerUser = async (req, res) => {
 exports.loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
-    const user = await User.findOne({ email });
+
+    // ✅ Must use .select("+password") because select: false in model
+    const user = await User.findOne({ email }).select("+password");
     if (!user || !(await user.comparePassword(password)))
       return res.status(400).json({ message: "Invalid credentials" });
 
@@ -111,7 +113,7 @@ exports.loginUser = async (req, res) => {
       refreshToken,
       role: user.role,
       userId: user._id,
-      name: user.username, 
+      name: user.username,
       storeId: user.storeId || null,
     });
   } catch (err) {
@@ -128,20 +130,27 @@ exports.googleLogin = async (req, res) => {
 
     let user = await User.findOne({ email });
     if (!user) {
-      user = new User({ 
-        username: name, 
-        email, 
-        googleId: socialId, 
-        socialProvider: "google", 
-        role: "CLIENT", 
-        phone: null 
+      user = new User({
+        username: name,
+        email,
+        googleId: socialId,
+        socialProvider: "google",
+        role: "CLIENT",
+        phone: null,
       });
       await user.save();
     }
 
     const token = generateToken(user._id, user.role, user.storeId);
     const refreshToken = generateRefreshToken(user._id);
-    res.json({ message: "Google login successful", token, refreshToken, userId: user._id, role: user.role, name: user.username });
+    res.json({
+      message: "Google login successful",
+      token,
+      refreshToken,
+      userId: user._id,
+      role: user.role,
+      name: user.username,
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -155,20 +164,27 @@ exports.facebookLogin = async (req, res) => {
 
     let user = await User.findOne({ email });
     if (!user) {
-      user = new User({ 
-        username: name, 
-        email, 
-        facebookId: socialId, 
-        socialProvider: "facebook", 
-        role: "CLIENT", 
-        phone: null 
+      user = new User({
+        username: name,
+        email,
+        facebookId: socialId,
+        socialProvider: "facebook",
+        role: "CLIENT",
+        phone: null,
       });
       await user.save();
     }
 
     const token = generateToken(user._id, user.role, user.storeId);
     const refreshToken = generateRefreshToken(user._id);
-    res.json({ message: "Facebook login successful", token, refreshToken, userId: user._id, role: user.role, name: user.username });
+    res.json({
+      message: "Facebook login successful",
+      token,
+      refreshToken,
+      userId: user._id,
+      role: user.role,
+      name: user.username,
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -182,20 +198,27 @@ exports.socialLogin = async (req, res) => {
 
     let user = await User.findOne({ email });
     if (!user) {
-      user = new User({ 
-        username: name, 
-        email, 
-        socialId, 
-        socialProvider: provider, 
-        role: "CLIENT", 
-        phone: null 
+      user = new User({
+        username: name,
+        email,
+        socialId,
+        socialProvider: provider,
+        role: "CLIENT",
+        phone: null,
       });
       await user.save();
     }
 
     const token = generateToken(user._id, user.role, user.storeId);
     const refreshToken = generateRefreshToken(user._id);
-    res.json({ message: `${provider} login successful`, token, refreshToken, userId: user._id, role: user.role, name: user.username });
+    res.json({
+      message: `${provider} login successful`,
+      token,
+      refreshToken,
+      userId: user._id,
+      role: user.role,
+      name: user.username,
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -208,7 +231,8 @@ exports.logout = async (req, res) => {
 
 exports.refreshToken = async (req, res) => {
   const { refreshToken } = req.body;
-  if (!refreshToken) return res.status(401).json({ message: "No refresh token" });
+  if (!refreshToken)
+    return res.status(401).json({ message: "No refresh token" });
   try {
     const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
     const user = await User.findById(decoded.id);
@@ -235,33 +259,38 @@ exports.getProfile = async (req, res) => {
 
 exports.updateProfile = async (req, res) => {
   try {
-    // Whitelist restricted to fields present in UI screens (username, mobileNumber, phone)
     const allowedUpdates = [
-      "username", 
-      "phone", 
-      "mobileNumber", 
-      "instapayNumber", 
-      "servicePreference"
+      "username",
+      "phone",
+      "mobileNumber",
+      "instapayNumber",
+      "servicePreference",
     ];
     const updates = {};
     allowedUpdates.forEach((field) => {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
     });
 
-    const user = await User.findByIdAndUpdate(req.user.id, updates, { new: true, runValidators: true })
-      .select("-password -otp -otpExpiry");
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      updates,
+      { new: true, runValidators: true }
+    ).select("-password -otp -otpExpiry");
+
     res.json({ message: "Profile updated successfully", user });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 };
 
-// ─── NEWLY ADDED FUNCTIONS TO FIX CRASH ───────────────────────────────────────
 exports.updateAvatar = async (req, res) => {
   try {
     const { avatar } = req.body;
-    const user = await User.findByIdAndUpdate(req.user.id, { avatar }, { new: true })
-      .select("-password");
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      { avatar },
+      { new: true }
+    ).select("-password");
     res.json({ message: "Avatar updated", user });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -270,7 +299,7 @@ exports.updateAvatar = async (req, res) => {
 
 exports.updateLocation = async (req, res) => {
   try {
-    const { coordinates } = req.body; 
+    const { coordinates } = req.body;
     const user = await User.findByIdAndUpdate(
       req.user.id,
       { location: { type: "Point", coordinates } },
@@ -299,7 +328,10 @@ exports.updateNotificationSettings = async (req, res) => {
       { $set: { notificationSettings: req.body } },
       { new: true }
     );
-    res.json({ message: "Settings updated", settings: user.notificationSettings });
+    res.json({
+      message: "Settings updated",
+      settings: user.notificationSettings,
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -308,8 +340,11 @@ exports.updateNotificationSettings = async (req, res) => {
 exports.updatePassword = async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
-    if (!currentPassword || !newPassword) return res.status(400).json({ message: "Current and new password required" });
-    const user = await User.findById(req.user.id);
+    if (!currentPassword || !newPassword)
+      return res.status(400).json({ message: "Current and new password required" });
+
+    // ✅ Must use .select("+password") because select: false in model
+    const user = await User.findById(req.user.id).select("+password");
     if (!user || !(await user.comparePassword(currentPassword)))
       return res.status(400).json({ message: "Current password is incorrect" });
 
@@ -337,8 +372,16 @@ exports.forgotPassword = async (req, res) => {
       from: `"TurnUP" <${process.env.EMAIL_USER}>`,
       to: email,
       subject: "TurnUP — Password Reset OTP",
-      html: `<h1 style="color: #6C3EF0;">${otp}</h1>`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+          <h2 style="color: #6C3EF0;">TurnUP Password Reset</h2>
+          <p>Your OTP is:</p>
+          <h1 style="color: #6C3EF0; letter-spacing: 10px;">${otp}</h1>
+          <p>Expires in <strong>10 minutes</strong>.</p>
+        </div>
+      `,
     });
+
     res.json({ message: "OTP sent to your email" });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -348,8 +391,13 @@ exports.forgotPassword = async (req, res) => {
 exports.verifyOtp = async (req, res) => {
   try {
     const { email, otp } = req.body;
-    const user = await User.findOne({ email, otp, otpExpiry: { $gt: Date.now() } });
-    if (!user) return res.status(400).json({ message: "Invalid or expired OTP" });
+    const user = await User.findOne({
+      email,
+      otp,
+      otpExpiry: { $gt: Date.now() },
+    });
+    if (!user)
+      return res.status(400).json({ message: "Invalid or expired OTP" });
     res.json({ message: "OTP verified successfully" });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -359,8 +407,13 @@ exports.verifyOtp = async (req, res) => {
 exports.resetPassword = async (req, res) => {
   try {
     const { email, otp, newPassword } = req.body;
-    const user = await User.findOne({ email, otp, otpExpiry: { $gt: Date.now() } });
-    if (!user) return res.status(400).json({ message: "Invalid or expired OTP" });
+    const user = await User.findOne({
+      email,
+      otp,
+      otpExpiry: { $gt: Date.now() },
+    });
+    if (!user)
+      return res.status(400).json({ message: "Invalid or expired OTP" });
 
     user.password = newPassword;
     user.otp = null;
@@ -387,7 +440,14 @@ exports.resendOtp = async (req, res) => {
       from: `"TurnUP" <${process.env.EMAIL_USER}>`,
       to: email,
       subject: "TurnUP — New OTP",
-      html: `<h1 style="color: #6C3EF0;">${otp}</h1>`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+          <h2 style="color: #6C3EF0;">TurnUP — New OTP</h2>
+          <p>Your new OTP is:</p>
+          <h1 style="color: #6C3EF0; letter-spacing: 10px;">${otp}</h1>
+          <p>Expires in <strong>10 minutes</strong>.</p>
+        </div>
+      `,
     });
     res.json({ message: "New OTP sent" });
   } catch (err) {
