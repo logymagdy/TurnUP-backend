@@ -27,7 +27,6 @@ const userSchema = new mongoose.Schema(
       required: true,
     },
     // ─── UNIFIED PHONE FIELD ──────────────────────────────────────────────────
-    // One field for all phone references — no more mobileNumber vs phone confusion
     phone: {
       type: String,
       default: null,
@@ -119,11 +118,13 @@ const userSchema = new mongoose.Schema(
 
 userSchema.index({ location: "2dsphere" });
 
-userSchema.pre("save", async function (next) {
-  if (!this.isModified("password") || !this.password) return next();
+// ✅ Correct — async WITHOUT next()
+// This prevents the "next is not a function" error in modern Mongoose
+userSchema.pre("save", async function () {
+  if (!this.isModified("password") || !this.password) return;
+  
   const salt = await bcrypt.genSalt(12);
   this.password = await bcrypt.hash(this.password, salt);
-  next();
 });
 
 userSchema.methods.comparePassword = async function (candidatePassword) {
