@@ -3,6 +3,11 @@ const jwt = require("jsonwebtoken");
 const nodemailer = require("nodemailer");
 const { generateReferralCode } = require("../utils/generateReferralCode");
 
+// ─── ROLE DEFINITIONS ─────────────────────────────────────────────────────────
+const BUSINESS_ROLES = ["serviceProvider", "RECEPTIONIST", "STYLIST"];
+const CLIENT_ROLES = ["CLIENT"];
+const ALL_ALLOWED_ROLES = [...BUSINESS_ROLES, ...CLIENT_ROLES];
+
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 const generateToken = (id, role, storeId) => {
   return jwt.sign(
@@ -20,7 +25,7 @@ const generateRefreshToken = (id) => {
   );
 };
 
-// ─── Nodemailer transporter ───────────────────────────────────────────────────
+// ─── Nodemailer ───────────────────────────────────────────────────────────────
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
@@ -30,6 +35,9 @@ const transporter = nodemailer.createTransport({
 });
 
 // ─── REGISTER ─────────────────────────────────────────────────────────────────
+// POST /api/auth/register
+// Frontend sends: { username, email, password, role, phone, servicePreference?, referralCode? }
+// Role must be explicitly chosen by user — no default assignment
 exports.registerUser = async (req, res) => {
   try {
     const {
@@ -42,25 +50,35 @@ exports.registerUser = async (req, res) => {
       referralCode: incomingReferralCode,
     } = req.body;
 
+    // ── Step 1: Block ADMIN self-registration
     if (role === "ADMIN")
       return res.status(403).json({ message: "Forbidden" });
 
-    const allowedRoles = ["serviceProvider", "RECEPTIONIST", "STYLIST", "CLIENT"];
-    if (!allowedRoles.includes(role))
-      return res.status(400).json({ message: "Invalid role" });
+    // ── Step 2: Validate role BEFORE anything else
+    if (!role || !ALL_ALLOWED_ROLES.includes(role))
+      return res.status(400).json({
+        message: `Invalid role. Must be one of: ${ALL_ALLOWED_ROLES.join(", ")}`,
+      });
 
+    // ── Step 3: Check duplicate email
     const existingUser = await User.findOne({ email });
     if (existingUser)
       return res.status(400).json({ message: "User already exists" });
 
+    // ── Step 4: Build user data based on role track
+    const isClientTrack = CLIENT_ROLES.includes(role);
+    const isBusinessTrack = BUSINESS_ROLES.includes(role);
+
+    // ── Step 5: Handle referral (CLIENT only)
     let referredBy = null;
-    if (incomingReferralCode) {
+    if (isClientTrack && incomingReferralCode) {
       const referrer = await User.findOne({ referralCode: incomingReferralCode });
       if (referrer) referredBy = referrer._id;
     }
 
+    // ── Step 6: Generate referral code (CLIENT only)
     let newReferralCode = null;
-    if (role === "CLIENT") {
+    if (isClientTrack) {
       let unique = false;
       while (!unique) {
         newReferralCode = generateReferralCode();
@@ -69,25 +87,32 @@ exports.registerUser = async (req, res) => {
       }
     }
 
+    // ── Step 7: Create user
     const newUser = new User({
       username,
       email,
       password,
       phone,
-      role: role || "CLIENT",
-      servicePreference,
-      referralCode: newReferralCode,
-      referredBy,
+      role,
+      // CLIENT only fields
+      servicePreference: isClientTrack ? servicePreference : null,
+      referralCode: isClientTrack ? newReferralCode : null,
+      referredBy: isClientTrack ? referredBy : null,
+      // Business track — storeId linked later by serviceProvider
+      storeId: null,
     });
 
     await newUser.save();
+
     const token = generateToken(newUser._id, newUser.role, null);
 
     res.status(201).json({
       message: "Account created successfully",
       token,
       userId: newUser._id,
-      referralCode: newReferralCode,
+      role: newUser.role,
+      track: isClientTrack ? "CLIENT" : "BUSINESS",
+      referralCode: isClientTrack ? newReferralCode : null,
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -99,7 +124,7 @@ exports.loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // ✅ Must use .select("+password") because select: false in model
+    // Must use .select("+password") because select: false in model
     const user = await User.findOne({ email }).select("+password");
     if (!user || !(await user.comparePassword(password)))
       return res.status(400).json({ message: "Invalid credentials" });
@@ -115,93 +140,31 @@ exports.loginUser = async (req, res) => {
       userId: user._id,
       name: user.username,
       storeId: user.storeId || null,
+      track: CLIENT_ROLES.includes(user.role) ? "CLIENT" : "BUSINESS",
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 };
 
-// ─── SOCIAL LOGINS ────────────────────────────────────────────────────────────
-exports.googleLogin = async (req, res) => {
+// ─── SOCIAL LOGIN (unified — handles google and facebook) ─────────────────────
+// googleLogin and facebookLogin both call this same logic
+const handleSocialLogin = async (req, res, provider) => {
   try {
     const { email, name, socialId } = req.body;
     if (!email || !name || !socialId)
       return res.status(400).json({ message: "email, name and socialId are required" });
 
     let user = await User.findOne({ email });
+
     if (!user) {
-      user = new User({
-        username: name,
-        email,
-        googleId: socialId,
-        socialProvider: "google",
-        role: "CLIENT",
-        phone: null,
-      });
-      await user.save();
-    }
-
-    const token = generateToken(user._id, user.role, user.storeId);
-    const refreshToken = generateRefreshToken(user._id);
-    res.json({
-      message: "Google login successful",
-      token,
-      refreshToken,
-      userId: user._id,
-      role: user.role,
-      name: user.username,
-    });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
-
-exports.facebookLogin = async (req, res) => {
-  try {
-    const { email, name, socialId } = req.body;
-    if (!email || !name || !socialId)
-      return res.status(400).json({ message: "email, name and socialId are required" });
-
-    let user = await User.findOne({ email });
-    if (!user) {
-      user = new User({
-        username: name,
-        email,
-        facebookId: socialId,
-        socialProvider: "facebook",
-        role: "CLIENT",
-        phone: null,
-      });
-      await user.save();
-    }
-
-    const token = generateToken(user._id, user.role, user.storeId);
-    const refreshToken = generateRefreshToken(user._id);
-    res.json({
-      message: "Facebook login successful",
-      token,
-      refreshToken,
-      userId: user._id,
-      role: user.role,
-      name: user.username,
-    });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
-
-exports.socialLogin = async (req, res) => {
-  try {
-    const { provider, email, name, socialId } = req.body;
-    if (!email || !name || !socialId || !provider)
-      return res.status(400).json({ message: "provider, email, name and socialId are required" });
-
-    let user = await User.findOne({ email });
-    if (!user) {
+      // Social login always creates CLIENT account
       user = new User({
         username: name,
         email,
         socialId,
+        googleId: provider === "google" ? socialId : null,
+        facebookId: provider === "facebook" ? socialId : null,
         socialProvider: provider,
         role: "CLIENT",
         phone: null,
@@ -211,6 +174,7 @@ exports.socialLogin = async (req, res) => {
 
     const token = generateToken(user._id, user.role, user.storeId);
     const refreshToken = generateRefreshToken(user._id);
+
     res.json({
       message: `${provider} login successful`,
       token,
@@ -218,10 +182,20 @@ exports.socialLogin = async (req, res) => {
       userId: user._id,
       role: user.role,
       name: user.username,
+      track: "CLIENT",
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
+};
+
+exports.googleLogin = (req, res) => handleSocialLogin(req, res, "google");
+exports.facebookLogin = (req, res) => handleSocialLogin(req, res, "facebook");
+exports.socialLogin = (req, res) => {
+  const { provider } = req.body;
+  if (!provider)
+    return res.status(400).json({ message: "provider is required" });
+  return handleSocialLogin(req, res, provider);
 };
 
 // ─── LOGOUT & TOKEN ───────────────────────────────────────────────────────────
@@ -244,7 +218,7 @@ exports.refreshToken = async (req, res) => {
   }
 };
 
-// ─── PROFILE MANAGEMENT ───────────────────────────────────────────────────────
+// ─── PROFILE ──────────────────────────────────────────────────────────────────
 exports.getProfile = async (req, res) => {
   try {
     const user = await User.findById(req.user.id)
@@ -259,12 +233,14 @@ exports.getProfile = async (req, res) => {
 
 exports.updateProfile = async (req, res) => {
   try {
+    // ✅ Only phone — no more mobileNumber confusion
     const allowedUpdates = [
       "username",
-      "phone",
-      "mobileNumber",
+      "phone",        // unified field
       "instapayNumber",
       "servicePreference",
+      "language",
+      "expoPushToken",
     ];
     const updates = {};
     allowedUpdates.forEach((field) => {
@@ -320,7 +296,7 @@ exports.deleteAccount = async (req, res) => {
   }
 };
 
-// ─── SETTINGS & SECURITY ──────────────────────────────────────────────────────
+// ─── SETTINGS ─────────────────────────────────────────────────────────────────
 exports.updateNotificationSettings = async (req, res) => {
   try {
     const user = await User.findByIdAndUpdate(
@@ -343,7 +319,7 @@ exports.updatePassword = async (req, res) => {
     if (!currentPassword || !newPassword)
       return res.status(400).json({ message: "Current and new password required" });
 
-    // ✅ Must use .select("+password") because select: false in model
+    // Must use .select("+password") because select: false in model
     const user = await User.findById(req.user.id).select("+password");
     if (!user || !(await user.comparePassword(currentPassword)))
       return res.status(400).json({ message: "Current password is incorrect" });
