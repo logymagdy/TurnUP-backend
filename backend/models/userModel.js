@@ -19,13 +19,15 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: false,
       minlength: 8,
-      select: false, // ✅ keep this — but fix queries to use +password
+      select: false,
     },
     role: {
       type: String,
       enum: ["ADMIN", "serviceProvider", "RECEPTIONIST", "STYLIST", "CLIENT"],
-      default: "CLIENT",
+      required: true,
     },
+    // ─── UNIFIED PHONE FIELD ──────────────────────────────────────────────────
+    // One field for all phone references — no more mobileNumber vs phone confusion
     phone: {
       type: String,
       default: null,
@@ -46,35 +48,45 @@ const userSchema = new mongoose.Schema(
     },
     otp: { type: String, default: null },
     otpExpiry: { type: Date, default: null },
+
+    // ─── CLIENT ONLY FIELDS ───────────────────────────────────────────────────
     servicePreference: {
       type: String,
       enum: ["MEN", "WOMEN", null],
       default: null,
     },
-    mobileNumber: { type: String, default: null },
-    location: {
-      type: { type: String, enum: ["Point"], default: "Point" },
-      coordinates: { type: [Number], default: [0, 0] },
+    referralCode: {
+      type: String,
+      unique: true,
+      sparse: true,
+      default: null,
     },
-    favorites: [{ type: mongoose.Schema.Types.ObjectId, ref: "Store" }],
+    referredBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
     loyaltyPoints: { type: Number, default: 0 },
     loyaltyTier: {
       type: String,
       enum: ["BRONZE", "SILVER", "GOLD"],
       default: "BRONZE",
     },
-    referralCode: { type: String, unique: true, sparse: true },
-    referredBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-    },
+    favorites: [{ type: mongoose.Schema.Types.ObjectId, ref: "Store" }],
     debt: { type: Number, default: 0 },
-    savedCard: { type: String, default: null },
     visitCount: { type: Number, default: 0 },
+
+    // ─── BUSINESS ONLY FIELDS ─────────────────────────────────────────────────
     instapayNumber: { type: String, default: null },
+
+    // ─── SHARED FIELDS ────────────────────────────────────────────────────────
+    savedCard: { type: String, default: null },
     expoPushToken: { type: String, default: null },
     language: { type: String, default: "en" },
+    location: {
+      type: { type: String, enum: ["Point"], default: "Point" },
+      coordinates: { type: [Number], default: [0, 0] },
+    },
     notificationSettings: {
       booking: {
         newBooking: { type: Boolean, default: true },
