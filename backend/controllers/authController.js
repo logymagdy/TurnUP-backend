@@ -33,7 +33,7 @@ const transporter = nodemailer.createTransport({
 exports.registerUser = async (req, res) => {
   try {
     const {
-      username, // Replaced 'name' with 'username' as per image_92077a.png
+      username, 
       email,
       password,
       role,
@@ -70,7 +70,7 @@ exports.registerUser = async (req, res) => {
     }
 
     const newUser = new User({
-      username, // Mapped to the optional username field
+      username, 
       email,
       password,
       phone,
@@ -111,7 +111,7 @@ exports.loginUser = async (req, res) => {
       refreshToken,
       role: user.role,
       userId: user._id,
-      name: user.name,
+      name: user.username, 
       storeId: user.storeId || null,
     });
   } catch (err) {
@@ -128,13 +128,20 @@ exports.googleLogin = async (req, res) => {
 
     let user = await User.findOne({ email });
     if (!user) {
-      user = new User({ name, email, socialId, socialProvider: "google", role: "CLIENT", phone: null });
+      user = new User({ 
+        username: name, 
+        email, 
+        googleId: socialId, 
+        socialProvider: "google", 
+        role: "CLIENT", 
+        phone: null 
+      });
       await user.save();
     }
 
     const token = generateToken(user._id, user.role, user.storeId);
     const refreshToken = generateRefreshToken(user._id);
-    res.json({ message: "Google login successful", token, refreshToken, userId: user._id, role: user.role, name: user.name });
+    res.json({ message: "Google login successful", token, refreshToken, userId: user._id, role: user.role, name: user.username });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -148,13 +155,20 @@ exports.facebookLogin = async (req, res) => {
 
     let user = await User.findOne({ email });
     if (!user) {
-      user = new User({ name, email, socialId, socialProvider: "facebook", role: "CLIENT", phone: null });
+      user = new User({ 
+        username: name, 
+        email, 
+        facebookId: socialId, 
+        socialProvider: "facebook", 
+        role: "CLIENT", 
+        phone: null 
+      });
       await user.save();
     }
 
     const token = generateToken(user._id, user.role, user.storeId);
     const refreshToken = generateRefreshToken(user._id);
-    res.json({ message: "Facebook login successful", token, refreshToken, userId: user._id, role: user.role, name: user.name });
+    res.json({ message: "Facebook login successful", token, refreshToken, userId: user._id, role: user.role, name: user.username });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -168,13 +182,20 @@ exports.socialLogin = async (req, res) => {
 
     let user = await User.findOne({ email });
     if (!user) {
-      user = new User({ name, email, socialId, socialProvider: provider, role: "CLIENT", phone: null });
+      user = new User({ 
+        username: name, 
+        email, 
+        socialId, 
+        socialProvider: provider, 
+        role: "CLIENT", 
+        phone: null 
+      });
       await user.save();
     }
 
     const token = generateToken(user._id, user.role, user.storeId);
     const refreshToken = generateRefreshToken(user._id);
-    res.json({ message: `${provider} login successful`, token, refreshToken, userId: user._id, role: user.role, name: user.name });
+    res.json({ message: `${provider} login successful`, token, refreshToken, userId: user._id, role: user.role, name: user.username });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -214,7 +235,14 @@ exports.getProfile = async (req, res) => {
 
 exports.updateProfile = async (req, res) => {
   try {
-    const allowedUpdates = ["name", "phone", "dateOfBirth", "instapayNumber", "servicePreference"];
+    // Whitelist restricted to fields present in UI screens (username, mobileNumber, phone)
+    const allowedUpdates = [
+      "username", 
+      "phone", 
+      "mobileNumber", 
+      "instapayNumber", 
+      "servicePreference"
+    ];
     const updates = {};
     allowedUpdates.forEach((field) => {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
@@ -242,7 +270,7 @@ exports.updateAvatar = async (req, res) => {
 
 exports.updateLocation = async (req, res) => {
   try {
-    const { coordinates } = req.body; // Expecting [lng, lat]
+    const { coordinates } = req.body; 
     const user = await User.findByIdAndUpdate(
       req.user.id,
       { location: { type: "Point", coordinates } },

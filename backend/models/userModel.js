@@ -6,7 +6,7 @@ const userSchema = new mongoose.Schema(
     username: {
       type: String,
       trim: true,
-      default: null, // Optional field
+      default: null,
     },
     email: {
       type: String,
@@ -52,22 +52,13 @@ const userSchema = new mongoose.Schema(
       default: null,
     },
 
-    // Profile Information
+    // Profile Information - Synced with image_76c1ac.png
     mobileNumber: { 
       type: String, 
       default: null 
     },
-    gender: {
-      type: String,
-      enum: ["Male", "Female", null], // Strictly Male or Female
-      default: null,
-    },
-    address: { 
-      type: String, 
-      default: null 
-    },
 
-    // Geolocation for maps/distance
+    // Geolocation
     location: {
       type: { type: String, enum: ["Point"], default: "Point" },
       coordinates: { type: [Number], default: [0, 0] },
@@ -100,7 +91,6 @@ const userSchema = new mongoose.Schema(
     expoPushToken: { type: String, default: null },
     language: { type: String, default: "en" },
 
-    // Detailed Notification Settings
     notificationSettings: {
       booking: {
         newBooking: { type: Boolean, default: true },
@@ -131,10 +121,8 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Enable geospatial queries
 userSchema.index({ location: "2dsphere" });
 
-// Hash password before saving
 userSchema.pre("save", async function (next) {
   if (!this.isModified("password") || !this.password) return next();
   const salt = await bcrypt.genSalt(12);
@@ -142,7 +130,6 @@ userSchema.pre("save", async function (next) {
   next();
 });
 
-// Helper to check password validity
 userSchema.methods.comparePassword = async function (candidatePassword) {
   if (!this.password) return false;
   return await bcrypt.compare(candidatePassword, this.password);
