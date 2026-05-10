@@ -3,27 +3,18 @@ const Appointment = require("../models/appointmentModel");
 /**
  * Assigns queue number, estimatedStartTime, and expiryTime
  * to a newly created NORMAL booking.
- *
- * @param {string} storeId
- * @param {string} date         - Format: YYYY-MM-DD
- * @param {string} time         - Format: HH:mm
- * @param {number} expiryMinutes - From store settings
- * @returns {{ queueNumber, estimatedStartTime, expiryTime }}
  */
 const assignQueueSlot = async (storeId, date, time, expiryMinutes = 20) => {
-  // Get all active entries for today sorted by queue number
   const activeEntries = await Appointment.find({
     storeId,
     date,
     status: { $nin: ["CANCELLED", "NO_SHOW", "EXPIRED", "DONE"] },
   }).sort({ queueNumber: 1 });
 
-  // Next queue number
   const lastEntry = activeEntries[activeEntries.length - 1];
   const queueNumber =
     lastEntry && lastEntry.queueNumber ? lastEntry.queueNumber + 1 : 1;
 
-  // Calculate estimated start time based on sum of avg durations ahead
   const totalWaitMinutes = activeEntries.reduce((sum, e) => {
     const avg =
       ((e.service.durationMin || 0) + (e.service.durationMax || 0)) / 2;
@@ -35,7 +26,6 @@ const assignQueueSlot = async (storeId, date, time, expiryMinutes = 20) => {
     appointmentBase.getTime() + totalWaitMinutes * 60 * 1000
   );
 
-  // Expiry = estimatedStartTime + store-defined expiry window
   const expiryTime = new Date(
     estimatedStartTime.getTime() + expiryMinutes * 60 * 1000
   );
@@ -43,4 +33,46 @@ const assignQueueSlot = async (storeId, date, time, expiryMinutes = 20) => {
   return { queueNumber, estimatedStartTime, expiryTime };
 };
 
-module.exports = { assignQueueSlot };
+/**
+ * Calculates the full live queue state for a store on a given date.
+ * Used by queueController, bookingController, and queueExpiryJob
+ * to get real-time queue data for emission and API response.
+ *
+ * @param {string} storeId
+ * @param {string} date - Format: YYYY-MM-DD
+ * @returns {{ entries, pendingEntries, totalWaitTime, totalWaitMinutes }}
+ */
+const calculateLiveQueue = async (storeId, date) => {
+  const activeStatuses = ["PENDING", "CONFIRMED", "CHECKED_IN", "IN_SERVICE"];
+
+  const entries = await Appointment.find({
+    storeId,
+    date,
+    status: { $in: activeStatuses },
+  })
+    .populate("client", "username phone fcmToken")
+    .populate("stylist", "username")
+    .sort({ queueNumber: 1 });
+
+  const pendingEntries = entries.filter((e) =>
+    ["PENDING", "CONFIRMED", "CHECKED_IN"].includes(e.status)
+  );
+
+  // Total wait = sum of avg durations of all pending entries
+  const totalWaitMinutes = pendingEntries.reduce((sum, e) => {
+    const avg =
+      ((e.service?.durationMin || 0) + (e.service?.durationMax || 0)) / 2;
+    return sum + avg;
+  }, 0);
+
+  const totalWaitTime = Math.ceil(totalWaitMinutes);
+
+  return {
+    entries,
+    pendingEntries,
+    totalWaitTime,
+    totalWaitMinutes,
+  };
+};
+
+module.exports = { assignQueueSlot, calculateLiveQueue };
