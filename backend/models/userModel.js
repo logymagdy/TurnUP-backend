@@ -49,6 +49,10 @@ const userSchema = new mongoose.Schema(
     referralCode: { type: String, default: null },
     referredBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
 
+    // --- FINANCIAL ---
+    wallet: { type: Number, default: 0 },
+    debt: { type: Number, default: 0 },
+
     // --- PROFILE & PREFERENCES ---
     storeId: { type: mongoose.Schema.Types.ObjectId, ref: "Store", default: null },
     servicePreference: { type: String, enum: ["MEN", "WOMEN", null], default: null },
@@ -58,7 +62,7 @@ const userSchema = new mongoose.Schema(
     avatar: { type: String, default: "default-avatar.png" },
     language: { type: String, default: "en" },
     points: { type: Number, default: 0 },
-    expoPushToken: { type: String, default: null },
+    fcmToken: { type: String, default: null },
 
     // GeoJSON for nearby salon search
     location: {
@@ -85,10 +89,8 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Index for geo-spatial queries
 userSchema.index({ location: "2dsphere" });
 
-// Hash password only if it exists and was modified
 userSchema.pre("save", async function (next) {
   if (!this.isModified("password") || !this.password) return next();
   const salt = await bcrypt.genSalt(12);
