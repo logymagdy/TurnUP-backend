@@ -227,7 +227,7 @@ exports.updateProfile = async (req, res, next) => {
       "phone",
       "servicePreference",
       "language",
-      "expoPushToken",
+      "fcmToken",
     ];
     const updates = {};
     allowedUpdates.forEach((field) => {
