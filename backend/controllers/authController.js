@@ -151,7 +151,6 @@ const handleSocialLogin = async (req, res, next, provider) => {
         facebookId: provider === "facebook" ? socialId : null,
         socialProvider: provider,
         role: "CLIENT",
-        phone: null,
       });
       await user.save();
     }
@@ -226,7 +225,6 @@ exports.updateProfile = async (req, res, next) => {
     const allowedUpdates = [
       "username",
       "phone",
-      "instapayNumber",
       "servicePreference",
       "language",
       "expoPushToken",
