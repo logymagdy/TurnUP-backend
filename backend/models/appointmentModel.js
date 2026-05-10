@@ -1,5 +1,15 @@
 const mongoose = require("mongoose");
 
+const serviceItemSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true },
+    price: { type: Number, required: true },
+    durationMin: { type: Number, default: 0 },
+    durationMax: { type: Number, default: 0 },
+  },
+  { _id: false }
+);
+
 const appointmentSchema = new mongoose.Schema(
   {
     storeId: {
@@ -17,12 +27,24 @@ const appointmentSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
+
+    // ── Primary service (used for queue display & backward compat) ─────
     service: {
       name: { type: String, required: true },
       price: { type: Number, required: true },
       durationMin: Number,
       durationMax: Number,
     },
+
+    // ── Multi-service list (full selection) ────────────────────────────
+    services: {
+      type: [serviceItemSchema],
+      default: [],
+    },
+
+    // ── Computed total across all selected services ────────────────────
+    totalAmount: { type: Number, default: 0 },
+
     date: { type: String, required: true },
     time: { type: String, required: true },
     status: {
@@ -63,9 +85,13 @@ const appointmentSchema = new mongoose.Schema(
     isPaid: { type: Boolean, default: false },
     paymentMethod: {
       type: String,
-      enum: ["CARD", "INSTAPAY", "CASH", null],
+      enum: ["CARD", "CASH", null],
       default: null,
     },
+
+    // ── Refund safety ──────────────────────────────────────────────────
+    refundId: { type: String, default: null },
+    refundedAt: { type: Date, default: null },
 
     // ── Group Bookings ─────────────────────────────────────────────────
     isGroupBooking: { type: Boolean, default: false },

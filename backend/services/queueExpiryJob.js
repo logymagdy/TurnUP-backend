@@ -17,7 +17,6 @@ const runQueueExpiryJob = async (io = null) => {
     const now = new Date();
     const today = now.toISOString().split("T")[0];
 
-    // Find all expired NORMAL bookings not yet processed
     const expiredBookings = await Appointment.find({
       bookingType: "NORMAL",
       date: today,
@@ -25,33 +24,21 @@ const runQueueExpiryJob = async (io = null) => {
       expiryTime: { $lte: now },
     });
 
-    // Track which stores need queue refresh after processing
     const affectedStoreIds = new Set();
 
     for (const appointment of expiredBookings) {
-      // Mark as EXPIRED
       appointment.status = "EXPIRED";
       await appointment.save();
 
-      // Get store-defined penalty
       const store = await Store.findById(appointment.storeId).select(
         "settings owner storeName"
       );
       const penalty = store?.settings?.noShowPenalty ?? 15;
 
-      // Apply penalty — add to debt if no saved card
-      const client = await User.findById(appointment.client).select(
-        "savedCard debt"
-      );
+      await User.findByIdAndUpdate(appointment.client, {
+        $inc: { debt: penalty },
+      });
 
-      if (!client.savedCard) {
-        await User.findByIdAndUpdate(appointment.client, {
-          $inc: { debt: penalty },
-        });
-      }
-      // If savedCard exists — charge via payment gateway in production
-
-      // Notify client — turn expired
       await sendNotification(
         appointment.client,
         "TURN_EXPIRED",
@@ -61,7 +48,6 @@ const runQueueExpiryJob = async (io = null) => {
         "APPOINTMENT"
       );
 
-      // Notify client — penalty applied
       await sendNotification(
         appointment.client,
         "PENALTY_APPLIED",
@@ -71,7 +57,6 @@ const runQueueExpiryJob = async (io = null) => {
         "APPOINTMENT"
       );
 
-      // Notify store owner — no-show
       await sendNotification(
         store.owner,
         "TURN_EXPIRED",
@@ -81,11 +66,9 @@ const runQueueExpiryJob = async (io = null) => {
         "APPOINTMENT"
       );
 
-      // Mark store as needing queue refresh
       affectedStoreIds.add(String(appointment.storeId));
     }
 
-    // Recalculate and emit queue refresh for each affected store
     if (io && affectedStoreIds.size > 0) {
       for (const storeId of affectedStoreIds) {
         const queueData = await calculateLiveQueue(storeId, today);
@@ -103,4 +86,4 @@ const runQueueExpiryJob = async (io = null) => {
   }
 };
 
-module.exports = { runQueueExpiryJob }; 
+module.exports = { runQueueExpiryJob };
