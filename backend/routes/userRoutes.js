@@ -11,11 +11,9 @@ const {
 const { protect } = require("../middleware/authMiddleware");
 
 // #swagger.tags = ['Users']
-
 /**
  * @route   GET /api/users/me
  * @desc    Get current user profile
- * @access  Private
  */
 router.get("/me", protect, getProfile);
 
