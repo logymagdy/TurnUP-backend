@@ -3,7 +3,7 @@ const bcrypt = require("bcryptjs");
 
 const userSchema = new mongoose.Schema(
   {
-    name: { type: String, required: [true, "Name is required"], trim: true },
+    username: { type: String, required: [true, "Name is required"], trim: true },
     email: {
       type: String,
       required: [true, "Email is required"],
@@ -13,7 +13,7 @@ const userSchema = new mongoose.Schema(
     },
     password: {
       type: String,
-      required: false, // Updated: Optional for social login users
+      required: false,
       minlength: 8,
       select: false,
     },
@@ -24,26 +24,30 @@ const userSchema = new mongoose.Schema(
     },
     phone: {
       type: String,
-      required: [true, "Mobile number is required"],
+      required: false,
       trim: true,
       match: [/^01[0-2,5]{1}[0-9]{8}$/, "Please enter a valid Egyptian phone number"],
     },
-    
+
     // --- SOCIAL LOGINS ---
-    socialProvider: { 
-      type: String, 
-      enum: ["google", "facebook", "local"], 
-      default: "local" 
+    socialProvider: {
+      type: String,
+      enum: ["google", "facebook", "local"],
+      default: "local",
     },
     socialId: { type: String, default: null },
-    googleId: { type: String, default: null },   // Added: Explicit Google ID
-    facebookId: { type: String, default: null }, // Added: Explicit Facebook ID
+    googleId: { type: String, default: null },
+    facebookId: { type: String, default: null },
 
     // --- PASSWORD RECOVERY (OTP) ---
-    otp: { type: String, default: null }, // General OTP
+    otp: { type: String, default: null },
     otpExpiry: { type: Date, default: null },
-    resetPasswordOtp: { type: String, default: null },    // Added: Specific for resets
-    resetPasswordExpires: { type: Date, default: null }, // Added: Expiry for resets
+    resetPasswordOtp: { type: String, default: null },
+    resetPasswordExpires: { type: Date, default: null },
+
+    // --- REFERRAL ---
+    referralCode: { type: String, default: null },
+    referredBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
 
     // --- PROFILE & PREFERENCES ---
     storeId: { type: mongoose.Schema.Types.ObjectId, ref: "Store", default: null },
@@ -54,11 +58,12 @@ const userSchema = new mongoose.Schema(
     avatar: { type: String, default: "default-avatar.png" },
     language: { type: String, default: "en" },
     points: { type: Number, default: 0 },
+    expoPushToken: { type: String, default: null },
 
     // GeoJSON for nearby salon search
     location: {
       type: { type: String, enum: ["Point"], default: "Point" },
-      coordinates: { type: [Number], default: [31.2357, 30.0444] } // [lng, lat]
+      coordinates: { type: [Number], default: [31.2357, 30.0444] },
     },
 
     // --- NOTIFICATION SETTINGS ---
@@ -71,20 +76,19 @@ const userSchema = new mongoose.Schema(
       payments: { type: Boolean, default: true },
       appUpdates: { type: Boolean, default: false },
       newServiceAvailable: { type: Boolean, default: false },
-      // Keep your legacy nested structure if needed by existing logic:
       booking: {
         newBooking: { type: Boolean, default: true },
-        cancellation: { type: Boolean, default: true }
-      }
-    }
+        cancellation: { type: Boolean, default: true },
+      },
+    },
   },
   { timestamps: true }
 );
 
-// Index for geo-spatial queries (nearby salons)
+// Index for geo-spatial queries
 userSchema.index({ location: "2dsphere" });
 
-// Hashing logic: Only hash if a password exists
+// Hash password only if it exists and was modified
 userSchema.pre("save", async function (next) {
   if (!this.isModified("password") || !this.password) return next();
   const salt = await bcrypt.genSalt(12);
