@@ -3,16 +3,17 @@ const jwt = require("jsonwebtoken");
 const nodemailer = require("nodemailer");
 const { generateReferralCode } = require("../utils/generateReferralCode");
 
+const BUSINESS_ROLES = ["serviceProvider", "RECEPTIONIST", "STYLIST"];
+const CLIENT_ROLES = ["CLIENT"];
+const ALL_ALLOWED_ROLES = [...BUSINESS_ROLES, ...CLIENT_ROLES];
+
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 const generateToken = (id, role, storeId) => {
   return jwt.sign({ id, role, storeId }, process.env.JWT_SECRET, { expiresIn: "7d" });
 };
 
 const generateRefreshToken = (id) => {
-  if (!process.env.JWT_REFRESH_SECRET) {
-    console.error("FATAL: JWT_REFRESH_SECRET is missing in .env");
-  }
-  return jwt.sign({ id }, process.env.JWT_REFRESH_SECRET || "fallback_secret", { expiresIn: "30d" });
+  return jwt.sign({ id }, process.env.JWT_REFRESH_SECRET, { expiresIn: "30d" });
 };
 
 const transporter = nodemailer.createTransport({
@@ -23,14 +24,65 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-// ─── SOCIAL LOGIN HANDLER ─────────────────────────────────────────────────────
+// ─── REGISTER ─────────────────────────────────────────────────────────────────
+exports.registerUser = async (req, res, next) => {
+  try {
+    const { username, email, password, role, phone, servicePreference, referralCode: incomingReferralCode } = req.body;
+    if (role === "ADMIN") return res.status(403).json({ message: "Forbidden" });
+    if (!role || !ALL_ALLOWED_ROLES.includes(role)) return res.status(400).json({ message: "Invalid role" });
+
+    const existingUser = await User.findOne({ email });
+    if (existingUser) return res.status(400).json({ message: "User already exists" });
+
+    const isClientTrack = CLIENT_ROLES.includes(role);
+    let referredBy = null;
+    if (isClientTrack && incomingReferralCode) {
+      const referrer = await User.findOne({ referralCode: incomingReferralCode });
+      if (referrer) referredBy = referrer._id;
+    }
+
+    let newReferralCode = null;
+    if (isClientTrack) {
+      let unique = false;
+      while (!unique) {
+        newReferralCode = generateReferralCode();
+        const clash = await User.findOne({ referralCode: newReferralCode });
+        if (!clash) unique = true;
+      }
+    }
+
+    const newUser = new User({
+      username, email, password, phone, role,
+      servicePreference: isClientTrack ? servicePreference : null,
+      referralCode: isClientTrack ? newReferralCode : null,
+      referredBy: isClientTrack ? referredBy : null,
+    });
+
+    await newUser.save();
+    const token = generateToken(newUser._id, newUser.role, null);
+    res.status(201).json({ message: "Account created", token, userId: newUser._id });
+  } catch (err) { next(err); }
+};
+
+// ─── LOGIN ────────────────────────────────────────────────────────────────────
+exports.loginUser = async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
+    const user = await User.findOne({ email }).select("+password");
+    if (!user || !(await user.comparePassword(password))) return res.status(400).json({ message: "Invalid credentials" });
+
+    const token = generateToken(user._id, user.role, user.storeId);
+    const refreshToken = generateRefreshToken(user._id);
+
+    res.json({ message: "Login successful", token, refreshToken, userId: user._id, role: user.role });
+  } catch (err) { next(err); }
+};
+
+// ─── SOCIAL LOGIN ─────────────────────────────────────────────────────────────
 const handleSocialLogin = async (req, res, next, provider) => {
   try {
     const { email, name, socialId } = req.body;
-
-    if (!email || !socialId) {
-      return res.status(400).json({ message: "Email and SocialId are required" });
-    }
+    if (!email || !socialId) return res.status(400).json({ message: "email and socialId are required" });
 
     let user = await User.findOne({ email });
 
@@ -50,18 +102,10 @@ const handleSocialLogin = async (req, res, next, provider) => {
     const token = generateToken(user._id, user.role, user.storeId);
     const refreshToken = generateRefreshToken(user._id);
 
-    res.json({
-      message: `${provider} login successful`,
-      token,
-      refreshToken,
-      userId: user._id,
-      role: user.role,
-      name: user.username,
-      track: "CLIENT",
-    });
+    res.json({ message: `${provider} login successful`, token, refreshToken, userId: user._id });
   } catch (err) {
-    console.error(`SOCIAL LOGIN ERROR (${provider}):`, err);
-    res.status(500).json({ success: false, message: err.message });
+    console.error("SOCIAL LOGIN ERROR:", err);
+    res.status(500).json({ message: err.message });
   }
 };
 
@@ -84,18 +128,15 @@ exports.forgotPassword = async (req, res, next) => {
       await transporter.sendMail({
         from: `"TurnUP" <${process.env.EMAIL_USER}>`,
         to: email,
-        subject: "TurnUP — Password Reset OTP",
-        html: `<div style="font-family: Arial;"><h2>OTP: ${otp}</h2></div>`,
+        subject: "TurnUP — OTP",
+        html: `<h1>OTP: ${otp}</h1>`,
       });
-      res.json({ message: "OTP sent to your email" });
-    } catch (mailError) {
-      console.error("NODEMAILER ERROR:", mailError);
-      return res.status(503).json({ message: "Email service failed. Check EMAIL_PASS env." });
+      res.json({ message: "OTP sent" });
+    } catch (mailErr) {
+      console.error("MAIL ERROR:", mailErr);
+      res.status(503).json({ message: "Email service failed" });
     }
-  } catch (err) {
-    console.error("FORGOT PASSWORD ERROR:", err);
-    res.status(500).json({ message: err.message });
-  }
+  } catch (err) { next(err); }
 };
 
-// ... include other exports (registerUser, loginUser, etc.) from your previous file
+// ... keep verifyOtp, resetPassword, and Profile functions as they were

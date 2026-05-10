@@ -20,7 +20,7 @@ const userSchema = new mongoose.Schema(
     role: {
       type: String,
       enum: ["ADMIN", "serviceProvider", "RECEPTIONIST", "STYLIST", "CLIENT"],
-      default: "CLIENT", // Ensure social logins don't crash without a role
+      default: "CLIENT", // Prevents crash if frontend forgets to send role
     },
     phone: { type: String, default: null, trim: true },
     socialProvider: {
@@ -57,10 +57,24 @@ const userSchema = new mongoose.Schema(
       coordinates: { type: [Number], default: [0, 0] },
     },
     notificationSettings: {
-      booking: { newBooking: { type: Boolean, default: true }, cancellation: { type: Boolean, default: true }, noShowAlert: { type: Boolean, default: true } },
-      queue: { newWalkIn: { type: Boolean, default: true }, queueDelay: { type: Boolean, default: true } },
-      system: { dailySummary: { type: Boolean, default: false }, importantUpdates: { type: Boolean, default: true } },
-      channels: { push: { type: Boolean, default: true }, sms: { type: Boolean, default: true }, email: { type: Boolean, default: false } },
+      booking: { 
+        newBooking: { type: Boolean, default: true }, 
+        cancellation: { type: Boolean, default: true }, 
+        noShowAlert: { type: Boolean, default: true } 
+      },
+      queue: { 
+        newWalkIn: { type: Boolean, default: true }, 
+        queueDelay: { type: Boolean, default: true } 
+      },
+      system: { 
+        dailySummary: { type: Boolean, default: false }, 
+        importantUpdates: { type: Boolean, default: true } 
+      },
+      channels: { 
+        push: { type: Boolean, default: true }, 
+        sms: { type: Boolean, default: true }, 
+        email: { type: Boolean, default: false } 
+      },
       general: { type: Boolean, default: true },
       sound: { type: Boolean, default: true },
       vibrate: { type: Boolean, default: false },
