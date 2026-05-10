@@ -3,11 +3,7 @@ const bcrypt = require("bcryptjs");
 
 const userSchema = new mongoose.Schema(
   {
-    username: {
-      type: String,
-      trim: true,
-      default: null,
-    },
+    username: { type: String, trim: true, default: null },
     email: {
       type: String,
       required: [true, "Email is required"],
@@ -17,21 +13,16 @@ const userSchema = new mongoose.Schema(
     },
     password: {
       type: String,
-      required: false,
+      required: false, 
       minlength: 8,
       select: false,
     },
     role: {
       type: String,
       enum: ["ADMIN", "serviceProvider", "RECEPTIONIST", "STYLIST", "CLIENT"],
-      required: true,
+      default: "CLIENT", // Ensure social logins don't crash without a role
     },
-    // ─── UNIFIED PHONE FIELD ──────────────────────────────────────────────────
-    phone: {
-      type: String,
-      default: null,
-      trim: true,
-    },
+    phone: { type: String, default: null, trim: true },
     socialProvider: {
       type: String,
       enum: ["google", "facebook", "local"],
@@ -40,45 +31,24 @@ const userSchema = new mongoose.Schema(
     socialId: { type: String, default: null },
     googleId: { type: String, default: null },
     facebookId: { type: String, default: null },
-    storeId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Store",
-      default: null,
-    },
+    storeId: { type: mongoose.Schema.Types.ObjectId, ref: "Store", default: null },
     otp: { type: String, default: null },
     otpExpiry: { type: Date, default: null },
 
-    // ─── CLIENT ONLY FIELDS ───────────────────────────────────────────────────
-    servicePreference: {
-      type: String,
-      enum: ["MEN", "WOMEN", null],
-      default: null,
-    },
-    referralCode: {
-      type: String,
-      unique: true,
-      sparse: true,
-      default: null,
-    },
-    referredBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-    },
+    // --- CLIENT FIELDS ---
+    servicePreference: { type: String, enum: ["MEN", "WOMEN", null], default: null },
+    referralCode: { type: String, unique: true, sparse: true, default: null },
+    referredBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
     loyaltyPoints: { type: Number, default: 0 },
-    loyaltyTier: {
-      type: String,
-      enum: ["BRONZE", "SILVER", "GOLD"],
-      default: "BRONZE",
-    },
+    loyaltyTier: { type: String, enum: ["BRONZE", "SILVER", "GOLD"], default: "BRONZE" },
     favorites: [{ type: mongoose.Schema.Types.ObjectId, ref: "Store" }],
     debt: { type: Number, default: 0 },
     visitCount: { type: Number, default: 0 },
 
-    // ─── BUSINESS ONLY FIELDS ─────────────────────────────────────────────────
+    // --- BUSINESS FIELDS ---
     instapayNumber: { type: String, default: null },
 
-    // ─── SHARED FIELDS ────────────────────────────────────────────────────────
+    // --- SHARED FIELDS ---
     savedCard: { type: String, default: null },
     expoPushToken: { type: String, default: null },
     language: { type: String, default: "en" },
@@ -87,24 +57,10 @@ const userSchema = new mongoose.Schema(
       coordinates: { type: [Number], default: [0, 0] },
     },
     notificationSettings: {
-      booking: {
-        newBooking: { type: Boolean, default: true },
-        cancellation: { type: Boolean, default: true },
-        noShowAlert: { type: Boolean, default: true },
-      },
-      queue: {
-        newWalkIn: { type: Boolean, default: true },
-        queueDelay: { type: Boolean, default: true },
-      },
-      system: {
-        dailySummary: { type: Boolean, default: false },
-        importantUpdates: { type: Boolean, default: true },
-      },
-      channels: {
-        push: { type: Boolean, default: true },
-        sms: { type: Boolean, default: true },
-        email: { type: Boolean, default: false },
-      },
+      booking: { newBooking: { type: Boolean, default: true }, cancellation: { type: Boolean, default: true }, noShowAlert: { type: Boolean, default: true } },
+      queue: { newWalkIn: { type: Boolean, default: true }, queueDelay: { type: Boolean, default: true } },
+      system: { dailySummary: { type: Boolean, default: false }, importantUpdates: { type: Boolean, default: true } },
+      channels: { push: { type: Boolean, default: true }, sms: { type: Boolean, default: true }, email: { type: Boolean, default: false } },
       general: { type: Boolean, default: true },
       sound: { type: Boolean, default: true },
       vibrate: { type: Boolean, default: false },
@@ -118,11 +74,8 @@ const userSchema = new mongoose.Schema(
 
 userSchema.index({ location: "2dsphere" });
 
-// ✅ Correct — async WITHOUT next()
-// This prevents the "next is not a function" error in modern Mongoose
 userSchema.pre("save", async function () {
   if (!this.isModified("password") || !this.password) return;
-  
   const salt = await bcrypt.genSalt(12);
   this.password = await bcrypt.hash(this.password, salt);
 });
