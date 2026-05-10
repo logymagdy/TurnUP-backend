@@ -1,21 +1,26 @@
+const admin = require("firebase-admin");
 const Notification = require("../models/notificationModel");
 const User = require("../models/userModel");
 
-let expo;
-
-/**
- * Lazy-load Expo (fixes ERR_REQUIRE_ESM)
- */
-const getExpo = async () => {
-  if (!expo) {
-    const { Expo } = await import("expo-server-sdk");
-    expo = new Expo();
+// ─── FIREBASE INIT (once, safely) ─────────────────────────────────────────────
+if (!admin.apps.length) {
+  try {
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+      }),
+    });
+    console.log("🔥 Firebase Admin initialized");
+  } catch (err) {
+    console.error("Firebase Admin init failed:", err.message);
   }
-  return expo;
-};
+}
 
 /**
- * Sends an Expo push notification AND saves it to DB
+ * Sends a push notification via FCM AND saves it to DB.
+ * Push failure never throws — it only logs.
  */
 const sendNotification = async (
   userId,
@@ -27,9 +32,7 @@ const sendNotification = async (
   data = {}
 ) => {
   try {
-    const expo = await getExpo();
-
-    // ── 1. Save notification to DB ─────────────────────────────────────
+    // ── 1. Save notification to DB always ─────────────────────────────
     await Notification.create({
       userId,
       type,
@@ -38,41 +41,48 @@ const sendNotification = async (
       referenceType,
     });
 
-    // ── 2. Get user's Expo push token ──────────────────────────────────
-    const user = await User.findById(userId).select("expoPushToken notificationSettings");
-    if (!user || !user.expoPushToken) return;
+    // ── 2. Get user FCM token and settings ─────────────────────────────
+    const user = await User.findById(userId).select(
+      "fcmToken notificationSettings"
+    );
+    if (!user || !user.fcmToken) return;
 
-    // ── 3. Respect user push notification setting ──────────────────────
-    if (!user.notificationSettings?.channels?.push) return;
+    if (!user.notificationSettings?.general) return;
 
-    // ── 4. Validate Expo token ─────────────────────────────────────────
-    if (!Expo.isExpoPushToken(user.expoPushToken)) {
-      console.error(`Invalid Expo push token for user ${userId}`);
-      return;
-    }
-
-    // ── 5. Build and send push message ────────────────────────────────
-    const pushMessage = {
-      to: user.expoPushToken,
-      sound: user.notificationSettings?.sound ? "default" : null,
-      title,
-      body: message,
-      data: { type, referenceId, referenceType, ...data },
+    // ── 3. Build FCM message ───────────────────────────────────────────
+    const message_payload = {
+      token: user.fcmToken,
+      notification: {
+        title,
+        body: message,
+      },
+      data: {
+        type,
+        referenceId: referenceId ? String(referenceId) : "",
+        referenceType: referenceType || "",
+        ...Object.fromEntries(
+          Object.entries(data).map(([k, v]) => [k, String(v)])
+        ),
+      },
+      android: {
+        notification: {
+          sound: user.notificationSettings?.sound ? "default" : null,
+        },
+      },
+      apns: {
+        payload: {
+          aps: {
+            sound: user.notificationSettings?.sound ? "default" : null,
+          },
+        },
+      },
     };
 
-    const chunks = expo.chunkPushNotifications([pushMessage]);
-
-    for (const chunk of chunks) {
-      try {
-        const receipts = await expo.sendPushNotificationsAsync(chunk);
-        receipts.forEach((receipt) => {
-          if (receipt.status === "error") {
-            console.error("Expo push error:", receipt.message);
-          }
-        });
-      } catch (chunkErr) {
-        console.error("Chunk send error:", chunkErr.message);
-      }
+    // ── 4. Send push — failure is logged, never thrown ─────────────────
+    try {
+      await admin.messaging().send(message_payload);
+    } catch (pushErr) {
+      console.error(`FCM push failed for user ${userId}:`, pushErr.message);
     }
   } catch (err) {
     console.error("sendNotification failed:", err.message);
@@ -80,7 +90,8 @@ const sendNotification = async (
 };
 
 /**
- * Sends the same notification to multiple users at once
+ * Sends the same notification to multiple users at once.
+ * Uses FCM sendEachForMulticast for batching.
  */
 const sendBulkNotification = async (
   userIds,
@@ -92,9 +103,7 @@ const sendBulkNotification = async (
   data = {}
 ) => {
   try {
-    const expo = await getExpo();
-
-    // ── 1. Save all notifications to DB in one operation ───────────────
+    // ── 1. Save all to DB in one operation ─────────────────────────────
     const notificationDocs = userIds.map((userId) => ({
       userId,
       type,
@@ -104,42 +113,41 @@ const sendBulkNotification = async (
     }));
     await Notification.insertMany(notificationDocs);
 
-    // ── 2. Get all users with valid push tokens ────────────────────────
+    // ── 2. Get users with valid FCM tokens ─────────────────────────────
     const users = await User.find({
       _id: { $in: userIds },
-      expoPushToken: { $ne: null },
-      "notificationSettings.channels.push": true,
-    }).select("expoPushToken notificationSettings");
+      fcmToken: { $ne: null },
+      "notificationSettings.general": true,
+    }).select("fcmToken notificationSettings");
 
     if (!users.length) return;
 
-    // ── 3. Build push messages for valid tokens only ───────────────────
-    const messages = users
-      .filter((u) => Expo.isExpoPushToken(u.expoPushToken))
-      .map((u) => ({
-        to: u.expoPushToken,
-        sound: u.notificationSettings?.sound ? "default" : null,
-        title,
-        body: message,
-        data: { type, referenceId, referenceType, ...data },
-      }));
+    const tokens = users.map((u) => u.fcmToken);
 
-    if (!messages.length) return;
+    // ── 3. Build multicast message ─────────────────────────────────────
+    const multicastMessage = {
+      tokens,
+      notification: { title, body: message },
+      data: {
+        type,
+        referenceId: referenceId ? String(referenceId) : "",
+        referenceType: referenceType || "",
+        ...Object.fromEntries(
+          Object.entries(data).map(([k, v]) => [k, String(v)])
+        ),
+      },
+    };
 
-    // ── 4. Send in chunks ──────────────────────────────────────────────
-    const chunks = expo.chunkPushNotifications(messages);
-
-    for (const chunk of chunks) {
-      try {
-        const receipts = await expo.sendPushNotificationsAsync(chunk);
-        receipts.forEach((receipt) => {
-          if (receipt.status === "error") {
-            console.error("Expo bulk push error:", receipt.message);
-          }
-        });
-      } catch (chunkErr) {
-        console.error("Bulk chunk send error:", chunkErr.message);
-      }
+    // ── 4. Send — log failures per token, never throw ──────────────────
+    try {
+      const response = await admin.messaging().sendEachForMulticast(multicastMessage);
+      response.responses.forEach((r, i) => {
+        if (!r.success) {
+          console.error(`FCM bulk fail for token ${tokens[i]}:`, r.error?.message);
+        }
+      });
+    } catch (pushErr) {
+      console.error("FCM bulk send failed:", pushErr.message);
     }
   } catch (err) {
     console.error("sendBulkNotification failed:", err.message);
