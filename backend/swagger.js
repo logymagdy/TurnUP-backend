@@ -8,12 +8,13 @@ const doc = {
     version: "1.2.0",
   },
 
-  host: process.env.VERCEL_URL
-    ? process.env.VERCEL_URL
+  host: process.env.NODE_ENV === "production"
+    ? "turnup-backend-j5nf.onrender.com"
     : "localhost:3000",
 
-basePath: "",
-  schemes: process.env.VERCEL_URL ? ["https"] : ["http"],
+  basePath: "",
+
+  schemes: process.env.NODE_ENV === "production" ? ["https"] : ["http"],
 
   securityDefinitions: {
     bearerAuth: {
@@ -61,5 +62,4 @@ const routes = [
   "./routes/adminRoutes.js",
 ];
 
-//  Generate swagger file
 swaggerAutogen(outputFile, routes, doc);
