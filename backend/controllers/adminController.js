@@ -1,41 +1,32 @@
 const Store = require("../models/storeModel");
 const User = require("../models/userModel");
+const { sendNotification } = require("../services/notificationServices");
 
 const ALLOWED_STORE_TYPES = ["barbershop", "beautySalon"];
 
-// ─── VALIDATION HELPER ────────────────────────────────────────────────────────
 const validateStoreForApproval = (store) => {
   const errors = [];
-
   if (!store.storeName || store.storeName.trim() === "")
     errors.push("Store name is missing.");
-
   if (!store.storeType || !ALLOWED_STORE_TYPES.includes(store.storeType))
     errors.push(`Store type is invalid or missing. Allowed: ${ALLOWED_STORE_TYPES.join(", ")}.`);
-
   if (!store.phone || store.phone.trim() === "")
     errors.push("Store phone number is missing.");
-
   if (!store.location || store.location.trim() === "")
     errors.push("Store location is missing.");
-
   if (!store.approvalDocuments?.businessLicense)
     errors.push("Required document missing: businessLicense.");
-
   if (!store.approvalDocuments?.ownerIdPhoto)
     errors.push("Required document missing: ownerIdPhoto.");
-
   if (
     !store.approvalDocuments?.shopPhotos ||
     !Array.isArray(store.approvalDocuments.shopPhotos) ||
     store.approvalDocuments.shopPhotos.length < 3
   )
     errors.push("Shop photos must include at least 3 images.");
-
   return errors;
 };
 
-// ─── APPROVE / REJECT STORE (ONBOARDING) ─────────────────────────────────────
 exports.approveStore = async (req, res) => {
   try {
     const { storeId, action, reason } = req.body;
@@ -51,7 +42,6 @@ exports.approveStore = async (req, res) => {
         message: `Store is already ${store.approvalStatus}. Only PENDING stores can be reviewed.`,
       });
 
-    // ── Duplicate check — only APPROVED is a valid conflict ────────────
     const duplicate = await Store.findOne({
       _id: { $ne: storeId },
       owner: store.owner,
@@ -67,23 +57,17 @@ exports.approveStore = async (req, res) => {
 
     const validationErrors = validateStoreForApproval(store);
     if (validationErrors.length > 0)
-      return res.status(400).json({
-        message: "Store failed validation checks:",
-        errors: validationErrors,
-      });
+      return res.status(400).json({ message: "Store failed validation:", errors: validationErrors });
 
     if (action === "REJECTED") {
       if (!reason || reason.trim() === "")
         return res.status(400).json({ message: "A rejection reason is required." });
-
       store.approvalStatus = "REJECTED";
       store.rejectionReason = reason.trim();
       await store.save();
-
       return res.status(200).json({ message: "Store rejected.", store });
     }
 
-    // ── APPROVED ───────────────────────────────────────────────────────
     store.approvalStatus = "APPROVED";
     store.rejectionReason = null;
     store.operationalStatus = "ACTIVE";
@@ -92,54 +76,37 @@ exports.approveStore = async (req, res) => {
     const trialStart = new Date();
     const trialEnd = new Date(trialStart);
     trialEnd.setMonth(trialEnd.getMonth() + 2);
-
     store.trialStartDate = trialStart;
     store.trialEndDate = trialEnd;
     await store.save();
 
-    return res.status(200).json({
-      message: "Store approved. 2-month free trial started.",
-      store,
-    });
+    return res.status(200).json({ message: "Store approved. 2-month free trial started.", store });
   } catch (err) {
     return res.status(500).json({ message: err.message });
   }
 };
 
-// ─── GET PENDING STORES ───────────────────────────────────────────────────────
 exports.getPendingStores = async (req, res) => {
   try {
     const stores = await Store.find({ approvalStatus: "PENDING" })
       .populate("owner", "username email phone")
       .select("storeName storeType location phone approvalDocuments createdAt")
       .sort({ createdAt: 1 });
-
     return res.status(200).json({ count: stores.length, stores });
   } catch (err) {
     return res.status(500).json({ message: err.message });
   }
 };
 
-// ─── MODERATE STORE (POST-APPROVAL SYSTEM) ────────────────────────────────────
-// Handles: WARN, UNDER_INVESTIGATION, SUSPEND, BAN, REACTIVATE
-// Every action is logged in moderationLog for full audit trail
 exports.moderateStore = async (req, res) => {
   try {
     const { storeId } = req.params;
     const { action, reason, suspensionDays, complaintId, resolution } = req.body;
 
-    const validActions = [
-      "WARNED",
-      "UNDER_INVESTIGATION",
-      "SUSPENDED",
-      "BANNED",
-      "REACTIVATED",
-    ];
+    const validActions = ["WARNED", "UNDER_INVESTIGATION", "SUSPENDED", "BANNED", "REACTIVATED"];
 
     if (!validActions.includes(action))
-      return res.status(400).json({
-        message: `Invalid action. Must be one of: ${validActions.join(", ")}.`,
-      });
+      return res.status(400).json({ message: `Invalid action. Must be one of: ${validActions.join(", ")}.` });
 
     if (!reason || reason.trim() === "")
       return res.status(400).json({ message: "A reason is required for all moderation actions." });
@@ -148,9 +115,7 @@ exports.moderateStore = async (req, res) => {
     if (!store) return res.status(404).json({ message: "Store not found." });
 
     if (store.approvalStatus !== "APPROVED")
-      return res.status(400).json({
-        message: "Only approved stores can be moderated.",
-      });
+      return res.status(400).json({ message: "Only approved stores can be moderated." });
 
     const previousStatus = store.operationalStatus;
     let newStatus = previousStatus;
@@ -159,7 +124,6 @@ exports.moderateStore = async (req, res) => {
     switch (action) {
       case "WARNED":
         store.warningCount += 1;
-        // Auto-suspend after 3 warnings per business rules
         if (store.warningCount >= 3) {
           newStatus = "SUSPENDED";
           store.operationalStatus = "SUSPENDED";
@@ -177,7 +141,7 @@ exports.moderateStore = async (req, res) => {
 
       case "SUSPENDED":
         if (!suspensionDays || suspensionDays < 1)
-          return res.status(400).json({ message: "suspensionDays is required for SUSPENDED action." });
+          return res.status(400).json({ message: "suspensionDays required for SUSPENDED action." });
         newStatus = "SUSPENDED";
         store.operationalStatus = "SUSPENDED";
         suspensionEndsAt = new Date();
@@ -200,7 +164,6 @@ exports.moderateStore = async (req, res) => {
         break;
     }
 
-    // ── Append to moderationLog ────────────────────────────────────────
     store.moderationLog.push({
       adminId: req.user.id,
       action,
@@ -215,13 +178,12 @@ exports.moderateStore = async (req, res) => {
 
     await store.save();
 
-    // ── Notify store owner ─────────────────────────────────────────────
     const messageMap = {
-      WARNED: `Your store has received a warning. Warning count: ${store.warningCount}/3. Reason: ${reason}`,
+      WARNED: `Your store has received a warning (${store.warningCount}/3). Reason: ${reason}`,
       UNDER_INVESTIGATION: `Your store is under investigation. Reason: ${reason}`,
       SUSPENDED: `Your store has been suspended for ${suspensionDays} day(s). Reason: ${reason}`,
       BANNED: `Your store has been permanently banned. Reason: ${reason}`,
-      REACTIVATED: `Your store has been reactivated and is now live again.`,
+      REACTIVATED: `Your store has been reactivated and is now live.`,
     };
 
     await sendNotification(
@@ -234,7 +196,7 @@ exports.moderateStore = async (req, res) => {
     );
 
     return res.status(200).json({
-      message: `Store moderation action applied: ${action}`,
+      message: `Moderation action applied: ${action}`,
       operationalStatus: store.operationalStatus,
       warningCount: store.warningCount,
       suspensionEndsAt: store.suspensionEndsAt,
@@ -244,7 +206,6 @@ exports.moderateStore = async (req, res) => {
   }
 };
 
-// ─── GET MODERATION LOG ───────────────────────────────────────────────────────
 exports.getModerationLog = async (req, res) => {
   try {
     const { storeId } = req.params;
