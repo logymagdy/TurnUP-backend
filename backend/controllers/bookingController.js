@@ -49,11 +49,15 @@ exports.createBooking = async (req, res) => {
     if (!store)
       return res.status(404).json({ message: "Store not found." });
 
-    if (store.status === "SUSPENDED")
-      return res.status(403).json({ message: "This store is temporarily unavailable." });
-
     if (store.approvalStatus !== "APPROVED")
       return res.status(403).json({ message: "This store is not currently accepting bookings." });
+
+    if (
+      store.status === "SUSPENDED" ||
+      store.operationalStatus === "SUSPENDED" ||
+      store.operationalStatus === "BANNED"
+    )
+      return res.status(403).json({ message: "This store is temporarily unavailable." });
 
     // ── 2. Client has no outstanding debt ──────────────────────────────
     const client = await User.findById(req.user.id).select("debt");
