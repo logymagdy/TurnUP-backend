@@ -1,6 +1,6 @@
 const Store = require("../models/storeModel");
 const User = require("../models/userModel");
-const { success, error } = require("../utils/responseHandler");
+const { success, error } = require("../responseHandler");
 
 // ─── ONBOARDING WIZARD ────────────────────────────────────────────────────────
 
@@ -57,7 +57,6 @@ exports.updateBusinessSetup = async (req, res) => {
       { $set: req.body },
       { new: true, runValidators: true }
     );
-
     if (!store) return res.status(404).json({ message: "Store not found" });
     res.json({ success: true, message: "Setup saved", store });
   } catch (err) {
@@ -83,7 +82,6 @@ exports.finishStoreSetup = async (req, res) => {
       { $set: { loyaltyProgram, paymentSetup, approvalStatus: "PENDING" } },
       { new: true }
     );
-
     if (!store) return res.status(404).json({ message: "Store not found" });
     res.json({ success: true, message: "Setup complete!", store });
   } catch (err) {
@@ -102,7 +100,6 @@ exports.toggleWorkDay = async (req, res) => {
       { isWorkDayActive: isActive },
       { new: true }
     );
-
     if (!store) return res.status(404).json({ message: "Store not found" });
 
     res.json({
@@ -127,7 +124,6 @@ exports.createStore = async (req, res) => {
     await store.save();
 
     await User.findByIdAndUpdate(req.user.id, { storeId: store._id });
-
     res.status(201).json({ message: "Store created successfully", store });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -185,7 +181,6 @@ exports.addStylist = async (req, res) => {
     await store.save();
 
     await User.findByIdAndUpdate(stylistId, { storeId: store._id });
-
     res.json({ message: "Stylist added successfully" });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -205,7 +200,6 @@ exports.removeStylist = async (req, res) => {
     await store.save();
 
     await User.findByIdAndUpdate(stylistId, { storeId: null });
-
     res.json({ message: "Stylist removed successfully" });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -230,7 +224,6 @@ exports.addReceptionist = async (req, res) => {
     await store.save();
 
     await User.findByIdAndUpdate(receptionistId, { storeId: store._id });
-
     res.json({ message: "Receptionist added successfully" });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -250,7 +243,6 @@ exports.removeReceptionist = async (req, res) => {
     await store.save();
 
     await User.findByIdAndUpdate(receptionistId, { storeId: null });
-
     res.json({ message: "Receptionist removed successfully" });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -331,18 +323,21 @@ exports.deleteService = async (req, res) => {
 };
 
 // ─── CLIENT DISCOVERY ─────────────────────────────────────────────────────────
+// SUSPENDED and BANNED stores are hidden from all discovery endpoints
 
 exports.getPublicStore = async (req, res) => {
   try {
-    const store = await Store.findById(req.params.storeId)
+    const store = await Store.findOne({
+      _id: req.params.storeId,
+      approvalStatus: "APPROVED",
+      operationalStatus: { $in: ["ACTIVE", "UNDER_INVESTIGATION"] },
+    })
       .select(
-        "storeName storeType location bio logo services workingHours seats isWorkDayActive status approvalStatus stylists"
+        "storeName storeType location bio logo services workingHours seats isWorkDayActive status approvalStatus operationalStatus stylists"
       )
       .populate("stylists", "username");
 
-    if (!store) return res.status(404).json({ message: "Store not found" });
-    if (store.approvalStatus !== "APPROVED")
-      return res.status(403).json({ message: "Store is not available" });
+    if (!store) return res.status(404).json({ message: "Store not found or unavailable." });
 
     res.json(store);
   } catch (err) {
@@ -354,7 +349,7 @@ exports.getAllStores = async (req, res) => {
   try {
     const stores = await Store.find({
       approvalStatus: "APPROVED",
-      status: "ACTIVE",
+      operationalStatus: { $in: ["ACTIVE", "UNDER_INVESTIGATION"] },
     }).select(
       "storeName storeType location bio logo services workingHours isWorkDayActive"
     );
@@ -369,19 +364,17 @@ exports.searchStores = async (req, res) => {
   try {
     const { keyword, type, location } = req.query;
 
-    const query = { approvalStatus: "APPROVED", status: "ACTIVE" };
+    const query = {
+      approvalStatus: "APPROVED",
+      operationalStatus: { $in: ["ACTIVE", "UNDER_INVESTIGATION"] },
+    };
 
-    if (keyword)
-      query.storeName = { $regex: keyword, $options: "i" };
-    if (type)
-      query.storeType = type;
-    if (location)
-      query.location = { $regex: location, $options: "i" };
+    if (keyword) query.storeName = { $regex: keyword, $options: "i" };
+    if (type) query.storeType = type;
+    if (location) query.location = { $regex: location, $options: "i" };
 
     const stores = await Store.find(query)
-      .select(
-        "storeName storeType location bio logo services workingHours isWorkDayActive"
-      )
+      .select("storeName storeType location bio logo services workingHours isWorkDayActive")
       .limit(50);
 
     return success(res, "Stores fetched successfully", stores);
@@ -394,11 +387,10 @@ exports.getFeaturedStores = async (req, res) => {
   try {
     const stores = await Store.find({
       approvalStatus: "APPROVED",
-      status: "ACTIVE",
+      operationalStatus: { $in: ["ACTIVE", "UNDER_INVESTIGATION"] },
     })
-      .select(
-        "storeName storeType location bio logo services workingHours isWorkDayActive"
-      )
+      .select("storeName storeType location bio logo services workingHours isWorkDayActive")
+      .sort({ rating: -1 })
       .limit(10);
 
     return success(res, "Featured stores fetched", stores);
@@ -422,9 +414,7 @@ exports.getStoreDetails = async (req, res) => {
 
 exports.toggleFavorite = async (req, res) => {
   try {
-    return res.status(501).json({
-      message: "Favorites feature is not yet implemented.",
-    });
+    return res.status(501).json({ message: "Favorites feature is not yet implemented." });
   } catch (err) {
     return error(res, "Could not update favorites", 500);
   }
