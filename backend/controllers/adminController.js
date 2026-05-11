@@ -63,12 +63,13 @@ exports.approveStore = async (req, res) => {
       });
     }
 
+    // ── Duplicate check: only APPROVED approval status is a valid conflict ──
     const duplicate = await Store.findOne({
       _id: { $ne: storeId },
       owner: store.owner,
       storeName: store.storeName,
       storeType: store.storeType,
-      approvalStatus: { $in: ["APPROVED", "ACTIVE"] },
+      approvalStatus: "APPROVED",
     });
 
     if (duplicate) {
@@ -105,8 +106,10 @@ exports.approveStore = async (req, res) => {
       });
     }
 
+    // ── APPROVED path ──────────────────────────────────────────────────
     store.approvalStatus = "APPROVED";
     store.rejectionReason = null;
+    store.subscriptionStatus = "TRIAL";
 
     const trialStart = new Date();
     const trialEnd = new Date(trialStart);
