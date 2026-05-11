@@ -1,7 +1,7 @@
 const Complaint = require("../models/complaintModel");
 const Appointment = require("../models/appointmentModel");
 const Store = require("../models/storeModel");
-const { success, error } = require("../responseHandler");
+const { success, error } = require("../utils/responseHandler");
 const { sendNotification } = require("../services/notificationServices");
 
 // ─── CLIENT: SUBMIT COMPLAINT ─────────────────────────────────────────────────
