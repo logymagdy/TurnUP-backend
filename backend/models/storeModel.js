@@ -15,6 +15,40 @@ const seatSchema = new mongoose.Schema({
   currentEntryId: { type: mongoose.Schema.Types.ObjectId, default: null },
 });
 
+const moderationLogSchema = new mongoose.Schema(
+  {
+    adminId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    action: {
+      type: String,
+      enum: [
+        "WARNED",
+        "UNDER_INVESTIGATION",
+        "SUSPENDED",
+        "BANNED",
+        "REACTIVATED",
+        "COMPLAINT_REVIEWED",
+      ],
+      required: true,
+    },
+    reason: { type: String, required: true },
+    previousStatus: { type: String, required: true },
+    newStatus: { type: String, required: true },
+    suspensionDays: { type: Number, default: null },
+    suspensionEndsAt: { type: Date, default: null },
+    complaintId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Complaint",
+      default: null,
+    },
+    resolution: { type: String, default: null },
+  },
+  { timestamps: true }
+);
+
 const storeSchema = new mongoose.Schema(
   {
     owner: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
@@ -43,9 +77,7 @@ const storeSchema = new mongoose.Schema(
       showWaitTime: { type: Boolean, default: true },
       manualQueueControl: { type: Boolean, default: false },
       maxGroupSize: { type: Number, default: 10 },
-      // Queue expiry: how many minutes after estimated turn before no-show
       queueExpiryMinutes: { type: Number, default: 20 },
-      // No-show penalty amount in EGP
       noShowPenalty: { type: Number, default: 15 },
     },
     loyaltyProgram: {
@@ -61,23 +93,43 @@ const storeSchema = new mongoose.Schema(
     numReviews: { type: Number, default: 0 },
     receptionists: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     stylists: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+
+    // ── ONBOARDING APPROVAL SYSTEM ─────────────────────────────────────
+    // Only used during initial store registration review
     approvalStatus: {
       type: String,
       enum: ["PENDING", "APPROVED", "REJECTED"],
       default: "PENDING",
     },
     rejectionReason: { type: String, default: null },
-    status: {
-      type: String,
-      enum: ["ACTIVE", "SUSPENDED"],
-      default: "ACTIVE",
-    },
     approvalDocuments: {
       businessLicense: { type: String, default: null },
       shopPhotos: [{ type: String }],
       ownerIdPhoto: { type: String, default: null },
       address: { type: String, default: null },
     },
+
+    // ── OPERATIONAL STATUS — post-approval moderation system ───────────
+    // Completely separate from approvalStatus
+    // Controls visibility and booking access for live stores
+    operationalStatus: {
+      type: String,
+      enum: ["ACTIVE", "UNDER_INVESTIGATION", "SUSPENDED", "BANNED"],
+      default: "ACTIVE",
+    },
+    suspensionEndsAt: { type: Date, default: null },
+    warningCount: { type: Number, default: 0 },
+
+    // ── FULL MODERATION AUDIT LOG ──────────────────────────────────────
+    moderationLog: [moderationLogSchema],
+
+    // ── Legacy status field — kept for backward compat ─────────────────
+    status: {
+      type: String,
+      enum: ["ACTIVE", "SUSPENDED"],
+      default: "ACTIVE",
+    },
+
     subscriptionStatus: {
       type: String,
       enum: ["TRIAL", "ACTIVE", "EXPIRED"],
@@ -99,14 +151,9 @@ const storeSchema = new mongoose.Schema(
       default: "NONE",
     },
     depositAmount: { type: Number, default: 0 },
-
-    // ── Refund policy for HOME and EVENT bookings ──────────────────────
     refundPolicy: {
-      // NORMAL queue cancellation window in minutes
       normalCancellationMinutes: { type: Number, default: 20 },
-      // HOME booking cancellation window in minutes
       homeCancellationMinutes: { type: Number, default: 30 },
-      // EVENT booking cancellation window in minutes
       eventCancellationMinutes: { type: Number, default: 60 },
       refundType: {
         type: String,
