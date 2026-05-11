@@ -1,6 +1,6 @@
 const Store = require("../models/storeModel");
 const User = require("../models/userModel");
-const { success, error } = require("../responseHandler");
+const { success, error } = require("../utils/responseHandler");
 
 // ─── ONBOARDING WIZARD ────────────────────────────────────────────────────────
 
