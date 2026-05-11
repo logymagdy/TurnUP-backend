@@ -28,7 +28,7 @@ const appointmentSchema = new mongoose.Schema(
       required: true,
     },
 
-    // ── Primary service (used for queue display & backward compat) ─────
+    // ── Primary service (queue display & backward compat) ──────────────
     service: {
       name: { type: String, required: true },
       price: { type: Number, required: true },
@@ -36,7 +36,7 @@ const appointmentSchema = new mongoose.Schema(
       durationMax: Number,
     },
 
-    // ── Multi-service list (full selection) ────────────────────────────
+    // ── Multi-service list ─────────────────────────────────────────────
     services: {
       type: [serviceItemSchema],
       default: [],
@@ -114,6 +114,13 @@ const appointmentSchema = new mongoose.Schema(
     review: { type: String, default: null },
     ratedAt: { type: Date, default: null },
     ratingDeadline: { type: Date, default: null },
+
+    // ── Complaint — one per appointment, set after submission ──────────
+    complaintId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Complaint",
+      default: null,
+    },
 
     // ── Cancellation ───────────────────────────────────────────────────
     cancelledBy: {
