@@ -1,6 +1,6 @@
 const Store = require("../models/storeModel");
 const User = require("../models/userModel");
-const { success, error } = require("../utils/responseHandler");
+const { success, error } = require("../responseHandler");
 
 // ─── ONBOARDING WIZARD ────────────────────────────────────────────────────────
 
@@ -99,7 +99,7 @@ exports.toggleWorkDay = async (req, res) => {
 
     const store = await Store.findOneAndUpdate(
       { owner: req.user.id },
-      { isOpen: isActive },
+      { isWorkDayActive: isActive },
       { new: true }
     );
 
@@ -142,9 +142,9 @@ exports.getStore = async (req, res) => {
         : { owner: req.user.id };
 
     const store = await Store.findOne(query)
-      .populate("owner", "name email phone")
-      .populate("stylists", "name email instapayNumber")
-      .populate("receptionists", "name email");
+      .populate("owner", "username email phone")
+      .populate("stylists", "username email")
+      .populate("receptionists", "username email");
 
     if (!store) return res.status(404).json({ message: "Store not found" });
     res.json(store);
@@ -261,7 +261,7 @@ exports.getStylists = async (req, res) => {
   try {
     const store = await Store.findOne({ owner: req.user.id }).populate(
       "stylists",
-      "name email instapayNumber loyaltyTier"
+      "username email phone"
     );
     if (!store) return res.status(404).json({ message: "Store not found" });
     res.json(store.stylists);
@@ -274,7 +274,7 @@ exports.getReceptionists = async (req, res) => {
   try {
     const store = await Store.findOne({ owner: req.user.id }).populate(
       "receptionists",
-      "name email phone"
+      "username email phone"
     );
     if (!store) return res.status(404).json({ message: "Store not found" });
     res.json(store.receptionists);
@@ -335,8 +335,10 @@ exports.deleteService = async (req, res) => {
 exports.getPublicStore = async (req, res) => {
   try {
     const store = await Store.findById(req.params.storeId)
-      .select("storeName storeType location bio logo services workingHours offDays seats isOpen status approvalStatus stylists")
-      .populate("stylists", "name");
+      .select(
+        "storeName storeType location bio logo services workingHours seats isWorkDayActive status approvalStatus stylists"
+      )
+      .populate("stylists", "username");
 
     if (!store) return res.status(404).json({ message: "Store not found" });
     if (store.approvalStatus !== "APPROVED")
@@ -353,7 +355,9 @@ exports.getAllStores = async (req, res) => {
     const stores = await Store.find({
       approvalStatus: "APPROVED",
       status: "ACTIVE",
-    }).select("storeName storeType location bio logo services workingHours isOpen");
+    }).select(
+      "storeName storeType location bio logo services workingHours isWorkDayActive"
+    );
 
     res.json(stores);
   } catch (err) {
@@ -375,7 +379,9 @@ exports.searchStores = async (req, res) => {
       query.location = { $regex: location, $options: "i" };
 
     const stores = await Store.find(query)
-      .select("storeName storeType location bio logo services workingHours isOpen")
+      .select(
+        "storeName storeType location bio logo services workingHours isWorkDayActive"
+      )
       .limit(50);
 
     return success(res, "Stores fetched successfully", stores);
@@ -390,7 +396,9 @@ exports.getFeaturedStores = async (req, res) => {
       approvalStatus: "APPROVED",
       status: "ACTIVE",
     })
-      .select("storeName storeType location bio logo services workingHours isOpen")
+      .select(
+        "storeName storeType location bio logo services workingHours isWorkDayActive"
+      )
       .limit(10);
 
     return success(res, "Featured stores fetched", stores);
@@ -402,8 +410,8 @@ exports.getFeaturedStores = async (req, res) => {
 exports.getStoreDetails = async (req, res) => {
   try {
     const store = await Store.findById(req.params.id)
-      .populate("stylists", "name email instapayNumber")
-      .populate("receptionists", "name email");
+      .populate("stylists", "username email phone")
+      .populate("receptionists", "username email");
 
     if (!store) return res.status(404).json({ message: "Store not found" });
     res.json(store);
@@ -414,25 +422,9 @@ exports.getStoreDetails = async (req, res) => {
 
 exports.toggleFavorite = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const { storeId } = req.params;
-
-    const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ message: "User not found" });
-
-    const isFavorite = user.favorites.map(String).includes(String(storeId));
-
-    if (isFavorite) {
-      user.favorites = user.favorites.filter(
-        (id) => String(id) !== String(storeId)
-      );
-    } else {
-      user.favorites.push(storeId);
-    }
-
-    await user.save();
-
-    return success(res, isFavorite ? "Removed from favorites" : "Added to favorites");
+    return res.status(501).json({
+      message: "Favorites feature is not yet implemented.",
+    });
   } catch (err) {
     return error(res, "Could not update favorites", 500);
   }
