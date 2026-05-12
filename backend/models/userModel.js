@@ -64,13 +64,11 @@ const userSchema = new mongoose.Schema(
     points: { type: Number, default: 0 },
     fcmToken: { type: String, default: null },
 
-    // GeoJSON for nearby salon search
     location: {
       type: { type: String, enum: ["Point"], default: "Point" },
       coordinates: { type: [Number], default: [31.2357, 30.0444] },
     },
 
-    // --- NOTIFICATION SETTINGS ---
     notificationSettings: {
       general: { type: Boolean, default: true },
       sound: { type: Boolean, default: true },
@@ -91,12 +89,24 @@ const userSchema = new mongoose.Schema(
 
 userSchema.index({ location: "2dsphere" });
 
-// FIXED: pre-save middleware (no next)
+/**
+ * ✅ CORRECT ASYNC PRE-SAVE
+ * We do not include 'next' in the parameters.
+ * Mongoose automatically handles the completion when the Promise resolves.
+ */
 userSchema.pre("save", async function () {
-  if (!this.isModified("password") || !this.password) return;
+  // Only run this function if password was actually modified (or is new)
+  if (!this.isModified("password") || !this.password) {
+    return;
+  }
 
-  const salt = await bcrypt.genSalt(12);
-  this.password = await bcrypt.hash(this.password, salt);
+  try {
+    const salt = await bcrypt.genSalt(12);
+    this.password = await bcrypt.hash(this.password, salt);
+  } catch (error) {
+    // Re-throw error to be caught by your controller's try/catch
+    throw new Error(error);
+  }
 });
 
 userSchema.methods.comparePassword = async function (candidatePassword) {
