@@ -28,8 +28,6 @@ const userSchema = new mongoose.Schema(
       trim: true,
       match: [/^01[0-2,5]{1}[0-9]{8}$/, "Please enter a valid Egyptian phone number"],
     },
-
-    // --- SOCIAL LOGINS ---
     socialProvider: {
       type: String,
       enum: ["google", "facebook", "local"],
@@ -38,22 +36,14 @@ const userSchema = new mongoose.Schema(
     socialId: { type: String, default: null },
     googleId: { type: String, default: null },
     facebookId: { type: String, default: null },
-
-    // --- PASSWORD RECOVERY (OTP) ---
     otp: { type: String, default: null },
     otpExpiry: { type: Date, default: null },
     resetPasswordOtp: { type: String, default: null },
     resetPasswordExpires: { type: Date, default: null },
-
-    // --- REFERRAL ---
     referralCode: { type: String, default: null },
     referredBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
-
-    // --- FINANCIAL ---
     wallet: { type: Number, default: 0 },
     debt: { type: Number, default: 0 },
-
-    // --- PROFILE & PREFERENCES ---
     storeId: { type: mongoose.Schema.Types.ObjectId, ref: "Store", default: null },
     servicePreference: { type: String, enum: ["MEN", "WOMEN", null], default: null },
     dateOfBirth: { type: Date },
@@ -63,12 +53,10 @@ const userSchema = new mongoose.Schema(
     language: { type: String, default: "en" },
     points: { type: Number, default: 0 },
     fcmToken: { type: String, default: null },
-
     location: {
       type: { type: String, enum: ["Point"], default: "Point" },
       coordinates: { type: [Number], default: [31.2357, 30.0444] },
     },
-
     notificationSettings: {
       general: { type: Boolean, default: true },
       sound: { type: Boolean, default: true },
@@ -89,23 +77,19 @@ const userSchema = new mongoose.Schema(
 
 userSchema.index({ location: "2dsphere" });
 
-/**
- * ✅ CORRECT ASYNC PRE-SAVE
- * We do not include 'next' in the parameters.
- * Mongoose automatically handles the completion when the Promise resolves.
- */
+// ─── THE CRITICAL FIX ────────────────────────────────────────────────────────
+// Notice: No 'next' in function(HERE)
 userSchema.pre("save", async function () {
-  // Only run this function if password was actually modified (or is new)
   if (!this.isModified("password") || !this.password) {
-    return;
+    return; // Use 'return', NEVER 'next()'
   }
 
   try {
     const salt = await bcrypt.genSalt(12);
     this.password = await bcrypt.hash(this.password, salt);
-  } catch (error) {
-    // Re-throw error to be caught by your controller's try/catch
-    throw new Error(error);
+    // Do NOT call next() here.
+  } catch (err) {
+    throw err; 
   }
 });
 
