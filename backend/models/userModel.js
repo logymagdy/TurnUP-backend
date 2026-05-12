@@ -91,11 +91,12 @@ const userSchema = new mongoose.Schema(
 
 userSchema.index({ location: "2dsphere" });
 
-userSchema.pre("save", async function (next) {
-  if (!this.isModified("password") || !this.password) return next();
+// FIXED: pre-save middleware (no next)
+userSchema.pre("save", async function () {
+  if (!this.isModified("password") || !this.password) return;
+
   const salt = await bcrypt.genSalt(12);
   this.password = await bcrypt.hash(this.password, salt);
-  next();
 });
 
 userSchema.methods.comparePassword = async function (candidatePassword) {
