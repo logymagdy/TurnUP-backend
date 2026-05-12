@@ -45,4 +45,4 @@ const runSuspensionLiftJob = async () => {
   }
 };
 
-module.exports = { runSuspensionLiftJob };s
+module.exports = { runSuspensionLiftJob };

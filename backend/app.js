@@ -54,44 +54,51 @@ connectDB();
 // ─── PORT ─────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 
-// ─── SWAGGER DOCS (FIXED FOR RENDER) ──────────────────────────────────────────
+// ─── SWAGGER DOCS ─────────────────────────────────────────────────────────────
 try {
   const swaggerUi = require("swagger-ui-express");
-
   const swaggerPath = path.resolve(__dirname, "./swagger-output.json");
   const swaggerFile = require(swaggerPath);
 
-  // ✅ FIX HOST
   swaggerFile.host =
     process.env.NODE_ENV === "production"
       ? "turnup-backend-j5nf.onrender.com"
       : `localhost:${PORT}`;
 
-  // ✅ FIX SCHEME
   swaggerFile.schemes =
-    process.env.NODE_ENV === "production"
-      ? ["https"]
-      : ["http"];
+    process.env.NODE_ENV === "production" ? ["https"] : ["http"];
 
-  // ✅ IMPORTANT
-  swaggerFile.basePath = "/api/auth";
+  // Fixed: "/" exposes all routes in Swagger, not just /api/auth
+  swaggerFile.basePath = "/";
 
   console.log("Swagger loaded from:", swaggerPath);
-
   app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerFile));
 } catch (e) {
   console.log("Swagger not available yet — check swagger-output.json path");
 }
 
-// ─── QUEUE EXPIRY JOB ─────────────────────────────────────────────────────────
+// ─── BACKGROUND JOBS ──────────────────────────────────────────────────────────
+
+// Queue expiry: marks NORMAL bookings as EXPIRED after grace period
+// Runs every 60 seconds
 try {
   const { runQueueExpiryJob } = require("./services/queueExpiryJob");
-
   setInterval(() => {
     runQueueExpiryJob(io);
   }, 60 * 1000);
 } catch (e) {
   console.log("Queue expiry job not available yet");
+}
+
+// Suspension lift: auto-reactivates stores after suspension period ends
+// Runs every 5 minutes
+try {
+  const { runSuspensionLiftJob } = require("./services/suspensionLiftJob");
+  setInterval(() => {
+    runSuspensionLiftJob();
+  }, 5 * 60 * 1000);
+} catch (e) {
+  console.log("Suspension lift job not available yet");
 }
 
 // ─── ROUTES ───────────────────────────────────────────────────────────────────
@@ -127,7 +134,15 @@ try {
 app.use("/api/payment", require("./routes/paymentRoutes"));
 app.use("/api/payments", require("./routes/paymentRoutes"));
 app.use("/api/loyalty", require("./routes/loyaltyRoutes"));
-app.use("/api/promotion", require("./routes/promotionRoutes"));
+
+// Promotions — wrapped in try/catch: file may not be fully implemented yet
+try {
+  app.use("/api/promotion", require("./routes/promotionRoutes"));
+} catch (e) {
+  console.log("promotionRoutes not available yet");
+}
+
+// Complaints & Moderation
 app.use("/api/complaint", require("./routes/complaintRoutes"));
 
 // Admin & Analytics
@@ -154,14 +169,10 @@ app.use((req, res) => {
 // ─── GLOBAL ERROR HANDLER ─────────────────────────────────────────────────────
 app.use((err, req, res, next) => {
   console.error("Critical Error:", err.stack);
-
   res.status(500).json({
     success: false,
     message: "Internal server error",
-    error:
-      process.env.NODE_ENV === "development"
-        ? err.message
-        : undefined,
+    error: process.env.NODE_ENV === "development" ? err.message : undefined,
   });
 });
 
