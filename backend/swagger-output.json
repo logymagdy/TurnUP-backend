@@ -6,7 +6,7 @@
     "version": "1.2.0"
   },
   "host": "localhost:3000",
-  "basePath": "",
+  "basePath": "/api",
   "tags": [
     {
       "name": "Auth",
@@ -132,6 +132,9 @@
               "type": "object",
               "properties": {
                 "email": {
+                  "example": "any"
+                },
+                "phone": {
                   "example": "any"
                 },
                 "password": {
@@ -262,6 +265,9 @@
               "properties": {
                 "email": {
                   "example": "any"
+                },
+                "phone": {
+                  "example": "any"
                 }
               }
             }
@@ -270,6 +276,9 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "400": {
+            "description": "Bad Request"
           },
           "404": {
             "description": "Not Found"
@@ -288,6 +297,9 @@
               "type": "object",
               "properties": {
                 "email": {
+                  "example": "any"
+                },
+                "phone": {
                   "example": "any"
                 },
                 "otp": {
@@ -318,6 +330,9 @@
               "type": "object",
               "properties": {
                 "email": {
+                  "example": "any"
+                },
+                "phone": {
                   "example": "any"
                 },
                 "otp": {
@@ -352,6 +367,9 @@
               "properties": {
                 "email": {
                   "example": "any"
+                },
+                "phone": {
+                  "example": "any"
                 }
               }
             }
@@ -360,6 +378,9 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "400": {
+            "description": "Bad Request"
           },
           "404": {
             "description": "Not Found"
