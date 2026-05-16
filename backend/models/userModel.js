@@ -3,7 +3,7 @@ const bcrypt = require("bcryptjs");
 
 const userSchema = new mongoose.Schema(
   {
-    // ─── 1. USERNAME IS OPTIONAL ───
+    // ─── USERNAME IS NOW OPTIONAL ───
     username: { type: String, required: false, trim: true },
     email: {
       type: String,
@@ -78,20 +78,18 @@ const userSchema = new mongoose.Schema(
 
 userSchema.index({ location: "2dsphere" });
 
-// ─── 2. REFACTORED VERSION-SAFE PRE-SAVE HOOK ───
+// ─── BACK TO YOUR ORIGINAL KEY-FOR-KEY HOOK STRUCTURE ────────────────────────
 userSchema.pre("save", async function () {
-  // If password isn't modified or doesn't exist, exit safely by returning
   if (!this.isModified("password") || !this.password) {
-    return;
+    return; // Use 'return', NEVER 'next()'
   }
 
   try {
     const salt = await bcrypt.genSalt(12);
     this.password = await bcrypt.hash(this.password, salt);
-    // Returning at the end of an async function resolves the Mongoose pre-save hook promise safely
-    return;
+    // Do NOT call next() here.
   } catch (err) {
-    throw err;
+    throw err; 
   }
 });
 
