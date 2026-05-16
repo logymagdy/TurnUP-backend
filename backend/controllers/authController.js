@@ -25,13 +25,19 @@ const generateRefreshToken = (id) => {
   );
 };
 
-// ─── Nodemailer ───────────────────────────────────────────────────────────────
+// ─── Nodemailer (IPv4 Forced Compatibility Mode) ──────────────────────────────
 const transporter = nodemailer.createTransport({
   service: "gmail",
+  host: "smtp.gmail.com",
+  port: 465,
+  secure: true,
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
+  // ─── FORCE RENDER LAYER DOWN TO IPV4 ───
+  family: 4,                 // Tells Node to bypass IPv6 lookup entirely
+  connectionTimeout: 10000,  // Prevents Postman from hanging endlessly if mail blocks
 });
 
 // ─── REGISTER ─────────────────────────────────────────────────────────────────
@@ -317,7 +323,7 @@ exports.updatePassword = async (req, res, next) => {
   }
 };
 
-// ─── PASSWORD RESET (FIXED FORGOT PASSWORD AND RESEND OTP) ───────────────────
+// ─── PASSWORD RESET ───────────────────────────────────────────────────────────
 exports.forgotPassword = async (req, res, next) => {
   try {
     const { email } = req.body;
@@ -325,7 +331,7 @@ exports.forgotPassword = async (req, res, next) => {
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
 
-    // CRITICAL SECURITY FIX: Atomic write updates attributes directly, completely bypassing old constraints
+    // Bypasses global model validations on existing documents
     const user = await User.findOneAndUpdate(
       { email: email.toLowerCase().trim() },
       { $set: { otp, otpExpiry } },
@@ -398,7 +404,7 @@ exports.resendOtp = async (req, res, next) => {
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
 
-    // CRITICAL SECURITY FIX: Bypasses schema rules for older data elements
+    // Bypasses global model validations on existing documents
     const user = await User.findOneAndUpdate(
       { email: email.toLowerCase().trim() },
       { $set: { otp, otpExpiry } },
