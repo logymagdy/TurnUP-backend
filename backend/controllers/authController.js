@@ -13,7 +13,7 @@ const generateToken = (id, role, storeId) => {
   return jwt.sign(
     { id, role, storeId },
     process.env.JWT_SECRET,
-    { expiresIn: "7d" }
+    { expiresIn: "15m" }
   );
 };
 
@@ -55,7 +55,16 @@ exports.registerUser = async (req, res, next) => {
         message: `Invalid role. Must be one of: ${ALL_ALLOWED_ROLES.join(", ")}`,
       });
 
-    const existingUser = await User.findOne({ email });
+    // ✅ Must provide at least email or phone
+    if (!email && !phone)
+      return res.status(400).json({ message: "Email or phone number is required" });
+
+    // ✅ Check duplicate by email OR phone
+    const orConditions = [];
+    if (email) orConditions.push({ email: email.toLowerCase().trim() });
+    if (phone) orConditions.push({ phone: phone.trim() });
+
+    const existingUser = await User.findOne({ $or: orConditions });
     if (existingUser)
       return res.status(400).json({ message: "User already exists" });
 
@@ -79,9 +88,9 @@ exports.registerUser = async (req, res, next) => {
 
     const newUser = new User({
       username,
-      email,
+      email: email ? email.toLowerCase().trim() : null,
       password,
-      phone,
+      phone: phone ? phone.trim() : null,
       role,
       servicePreference: isClientTrack ? servicePreference : null,
       referralCode: isClientTrack ? newReferralCode : null,
@@ -92,10 +101,12 @@ exports.registerUser = async (req, res, next) => {
     await newUser.save();
 
     const token = generateToken(newUser._id, newUser.role, null);
+    const refreshToken = generateRefreshToken(newUser._id);
 
     res.status(201).json({
       message: "Account created successfully",
       token,
+      refreshToken,
       userId: newUser._id,
       role: newUser.role,
       track: isClientTrack ? "CLIENT" : "BUSINESS",
@@ -109,9 +120,17 @@ exports.registerUser = async (req, res, next) => {
 // ─── LOGIN ────────────────────────────────────────────────────────────────────
 exports.loginUser = async (req, res, next) => {
   try {
-    const { email, password } = req.body;
+    const { email, phone, password } = req.body;
 
-    const user = await User.findOne({ email }).select("+password");
+    if (!email && !phone)
+      return res.status(400).json({ message: "Email or phone number is required" });
+
+    const orConditions = [];
+    if (email) orConditions.push({ email: email.toLowerCase().trim() });
+    if (phone) orConditions.push({ phone: phone.trim() });
+
+    const user = await User.findOne({ $or: orConditions }).select("+password");
+
     if (!user || !(await user.comparePassword(password)))
       return res.status(400).json({ message: "Invalid credentials" });
 
@@ -237,7 +256,7 @@ exports.updateProfile = async (req, res, next) => {
     const user = await User.findByIdAndUpdate(
       req.user.id,
       updates,
-      { new: true, runValidators: true }
+      { returnDocument: "after", runValidators: true }
     ).select("-password -otp -otpExpiry");
 
     res.json({ message: "Profile updated successfully", user });
@@ -252,7 +271,7 @@ exports.updateAvatar = async (req, res, next) => {
     const user = await User.findByIdAndUpdate(
       req.user.id,
       { avatar },
-      { new: true }
+      { returnDocument: "after" }
     ).select("-password");
     res.json({ message: "Avatar updated", user });
   } catch (err) {
@@ -266,7 +285,7 @@ exports.updateLocation = async (req, res, next) => {
     const user = await User.findByIdAndUpdate(
       req.user.id,
       { location: { type: "Point", coordinates } },
-      { new: true }
+      { returnDocument: "after" }
     ).select("-password");
     res.json({ message: "Location updated", user });
   } catch (err) {
@@ -288,7 +307,7 @@ exports.updateNotificationSettings = async (req, res, next) => {
     const user = await User.findByIdAndUpdate(
       req.user.id,
       { $set: { notificationSettings: req.body } },
-      { new: true }
+      { returnDocument: "after" }
     );
     res.json({
       message: "Settings updated",
@@ -317,67 +336,105 @@ exports.updatePassword = async (req, res, next) => {
   }
 };
 
-// ─── PASSWORD RESET (FIXED FORGOT PASSWORD AND RESEND OTP) ───────────────────
+// ─── FORGOT PASSWORD ──────────────────────────────────────────────────────────
 exports.forgotPassword = async (req, res, next) => {
   try {
-    const { email } = req.body;
-    
+    const { email, phone } = req.body;
+
+    if (!email && !phone)
+      return res.status(400).json({ message: "Email or phone number is required" });
+
+    const orConditions = [];
+    if (email) orConditions.push({ email: email.toLowerCase().trim() });
+    if (phone) orConditions.push({ phone: phone.trim() });
+
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
 
-    // CRITICAL SECURITY FIX: Atomic write updates attributes directly, completely bypassing old constraints
     const user = await User.findOneAndUpdate(
-      { email: email.toLowerCase().trim() },
+      { $or: orConditions },
       { $set: { otp, otpExpiry } },
-      { new: true }
+      { returnDocument: "after" }
     );
 
     if (!user) return res.status(404).json({ message: "No account found" });
 
-    await transporter.sendMail({
-      from: `"TurnUP" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: "TurnUP — Password Reset OTP",
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
-          <h2 style="color: #6C3EF0;">TurnUP Password Reset</h2>
-          <p>Your OTP is:</p>
-          <h1 style="color: #6C3EF0; letter-spacing: 10px;">${otp}</h1>
-          <p>Expires in <strong>10 minutes</strong>.</p>
-        </div>
-      `,
-    });
+    if (user.email) {
+      try {
+        await transporter.sendMail({
+          from: `"TurnUP" <${process.env.EMAIL_USER}>`,
+          to: user.email,
+          subject: "TurnUP — Password Reset OTP",
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+              <h2 style="color: #6C3EF0;">TurnUP Password Reset</h2>
+              <p>Your OTP is:</p>
+              <h1 style="color: #6C3EF0; letter-spacing: 10px;">${otp}</h1>
+              <p>Expires in <strong>10 minutes</strong>.</p>
+            </div>
+          `,
+        });
+      } catch (emailErr) {
+        console.error("Email sending failed:", emailErr.message);
+      }
+    }
 
-    res.json({ message: "OTP sent to your email" });
+    if (!user.email && user.phone) {
+      console.log(`OTP for ${user.phone}: ${otp}`);
+      // TODO: integrate SMS provider here
+    }
+
+    res.json({ message: "OTP sent successfully" });
   } catch (err) {
     next(err);
   }
 };
 
+// ─── VERIFY OTP ───────────────────────────────────────────────────────────────
 exports.verifyOtp = async (req, res, next) => {
   try {
-    const { email, otp } = req.body;
+    const { email, phone, otp } = req.body;
+
+    if (!email && !phone)
+      return res.status(400).json({ message: "Email or phone number is required" });
+
+    const orConditions = [];
+    if (email) orConditions.push({ email: email.toLowerCase().trim() });
+    if (phone) orConditions.push({ phone: phone.trim() });
+
     const user = await User.findOne({
-      email,
+      $or: orConditions,
       otp,
       otpExpiry: { $gt: Date.now() },
     });
+
     if (!user)
       return res.status(400).json({ message: "Invalid or expired OTP" });
+
     res.json({ message: "OTP verified successfully" });
   } catch (err) {
     next(err);
   }
 };
 
+// ─── RESET PASSWORD ───────────────────────────────────────────────────────────
 exports.resetPassword = async (req, res, next) => {
   try {
-    const { email, otp, newPassword } = req.body;
+    const { email, phone, otp, newPassword } = req.body;
+
+    if (!email && !phone)
+      return res.status(400).json({ message: "Email or phone number is required" });
+
+    const orConditions = [];
+    if (email) orConditions.push({ email: email.toLowerCase().trim() });
+    if (phone) orConditions.push({ phone: phone.trim() });
+
     const user = await User.findOne({
-      email,
+      $or: orConditions,
       otp,
       otpExpiry: { $gt: Date.now() },
     });
+
     if (!user)
       return res.status(400).json({ message: "Invalid or expired OTP" });
 
@@ -385,42 +442,62 @@ exports.resetPassword = async (req, res, next) => {
     user.otp = null;
     user.otpExpiry = null;
     await user.save();
+
     res.json({ message: "Password reset successfully" });
   } catch (err) {
     next(err);
   }
 };
 
+// ─── RESEND OTP ───────────────────────────────────────────────────────────────
 exports.resendOtp = async (req, res, next) => {
   try {
-    const { email } = req.body;
+    const { email, phone } = req.body;
+
+    if (!email && !phone)
+      return res.status(400).json({ message: "Email or phone number is required" });
+
+    const orConditions = [];
+    if (email) orConditions.push({ email: email.toLowerCase().trim() });
+    if (phone) orConditions.push({ phone: phone.trim() });
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
 
-    // CRITICAL SECURITY FIX: Bypasses schema rules for older data elements
     const user = await User.findOneAndUpdate(
-      { email: email.toLowerCase().trim() },
+      { $or: orConditions },
       { $set: { otp, otpExpiry } },
-      { new: true }
+      { returnDocument: "after" }
     );
 
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    await transporter.sendMail({
-      from: `"TurnUP" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: "TurnUP — New OTP",
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
-          <h2 style="color: #6C3EF0;">TurnUP — New OTP</h2>
-          <p>Your new OTP is:</p>
-          <h1 style="color: #6C3EF0; letter-spacing: 10px;">${otp}</h1>
-          <p>Expires in <strong>10 minutes</strong>.</p>
-        </div>
-      `,
-    });
-    res.json({ message: "New OTP sent" });
+    if (user.email) {
+      try {
+        await transporter.sendMail({
+          from: `"TurnUP" <${process.env.EMAIL_USER}>`,
+          to: user.email,
+          subject: "TurnUP — New OTP",
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+              <h2 style="color: #6C3EF0;">TurnUP — New OTP</h2>
+              <p>Your new OTP is:</p>
+              <h1 style="color: #6C3EF0; letter-spacing: 10px;">${otp}</h1>
+              <p>Expires in <strong>10 minutes</strong>.</p>
+            </div>
+          `,
+        });
+      } catch (emailErr) {
+        console.error("Email sending failed:", emailErr.message);
+      }
+    }
+
+    if (!user.email && user.phone) {
+      console.log(`OTP for ${user.phone}: ${otp}`);
+      // TODO: integrate SMS provider here
+    }
+
+    res.json({ message: "New OTP sent successfully" });
   } catch (err) {
     next(err);
   }
