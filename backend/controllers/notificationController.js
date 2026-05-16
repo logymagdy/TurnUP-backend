@@ -55,17 +55,16 @@ exports.markAllAsRead = async (req, res) => {
   }
 };
 
-// ─── SAVE EXPO PUSH TOKEN ─────────────────────────────────────────────────────
-// Called from mobile app after Expo registers device token
+// ─── SAVE FCM TOKEN ───────────────────────────────────────────────────────────
 exports.savePushToken = async (req, res) => {
   try {
-    const { expoPushToken } = req.body;
+    const { fcmToken } = req.body;
 
-    if (!expoPushToken) {
-      return res.status(400).json({ message: "Expo push token is required." });
+    if (!fcmToken) {
+      return res.status(400).json({ message: "FCM token is required." });
     }
 
-    await User.findByIdAndUpdate(req.user.id, { expoPushToken });
+    await User.findByIdAndUpdate(req.user.id, { fcmToken });
 
     return res.status(200).json({ message: "Push token saved successfully." });
   } catch (err) {
