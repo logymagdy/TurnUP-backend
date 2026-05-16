@@ -25,19 +25,19 @@ const generateRefreshToken = (id) => {
   );
 };
 
-// ─── Nodemailer (IPv4 Forced Compatibility Mode) ──────────────────────────────
+// ─── Nodemailer (Hardcoded IPv4 Routing for Cloud Environments) ───────────────
 const transporter = nodemailer.createTransport({
-  service: "gmail",
-  host: "smtp.gmail.com",
+  host: "74.125.142.108", // Direct, official IPv4 address for smtp.gmail.com
   port: 465,
-  secure: true,
+  secure: true, // Must be true for port 465
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
-  // ─── FORCE RENDER LAYER DOWN TO IPV4 ───
-  family: 4,                 // Tells Node to bypass IPv6 lookup entirely
-  connectionTimeout: 10000,  // Prevents Postman from hanging endlessly if mail blocks
+  tls: {
+    rejectUnauthorized: false, // Prevents SSL hostname mismatch warnings since we connect via direct IP
+  },
+  connectionTimeout: 10000, 
 });
 
 // ─── REGISTER ─────────────────────────────────────────────────────────────────
@@ -305,6 +305,7 @@ exports.updateNotificationSettings = async (req, res, next) => {
   }
 };
 
+// ─── UPDATE PASSWORD ──────────────────────────────────────────────────────────
 exports.updatePassword = async (req, res, next) => {
   try {
     const { currentPassword, newPassword } = req.body;
@@ -331,7 +332,7 @@ exports.forgotPassword = async (req, res, next) => {
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
 
-    // Bypasses global model validations on existing documents
+    // Bypasses global model validations on legacy documents
     const user = await User.findOneAndUpdate(
       { email: email.toLowerCase().trim() },
       { $set: { otp, otpExpiry } },
@@ -404,7 +405,7 @@ exports.resendOtp = async (req, res, next) => {
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
 
-    // Bypasses global model validations on existing documents
+    // Bypasses global model validations on legacy documents
     const user = await User.findOneAndUpdate(
       { email: email.toLowerCase().trim() },
       { $set: { otp, otpExpiry } },
