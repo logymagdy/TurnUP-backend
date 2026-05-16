@@ -68,10 +68,8 @@ try {
   swaggerFile.schemes =
     process.env.NODE_ENV === "production" ? ["https"] : ["http"];
 
-  // Fixed: "/" exposes all routes in Swagger, not just /api/auth
-  swaggerFile.basePath = "/";
-
   console.log("Swagger loaded from:", swaggerPath);
+
   app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerFile));
 } catch (e) {
   console.log("Swagger not available yet — check swagger-output.json path");
@@ -83,6 +81,7 @@ try {
 // Runs every 60 seconds
 try {
   const { runQueueExpiryJob } = require("./services/queueExpiryJob");
+
   setInterval(() => {
     runQueueExpiryJob(io);
   }, 60 * 1000);
@@ -94,6 +93,7 @@ try {
 // Runs every 5 minutes
 try {
   const { runSuspensionLiftJob } = require("./services/suspensionLiftJob");
+
   setInterval(() => {
     runSuspensionLiftJob();
   }, 5 * 60 * 1000);
@@ -169,10 +169,14 @@ app.use((req, res) => {
 // ─── GLOBAL ERROR HANDLER ─────────────────────────────────────────────────────
 app.use((err, req, res, next) => {
   console.error("Critical Error:", err.stack);
+
   res.status(500).json({
     success: false,
     message: "Internal server error",
-    error: process.env.NODE_ENV === "development" ? err.message : undefined,
+    error:
+      process.env.NODE_ENV === "development"
+        ? err.message
+        : undefined,
   });
 });
 

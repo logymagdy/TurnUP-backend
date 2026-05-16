@@ -3,7 +3,8 @@ const bcrypt = require("bcryptjs");
 
 const userSchema = new mongoose.Schema(
   {
-    username: { type: String, required: [true, "Name is required"], trim: true },
+    // ─── USERNAME IS NOW OPTIONAL ───
+    username: { type: String, required: false, trim: true },
     email: {
       type: String,
       required: [true, "Email is required"],
@@ -77,19 +78,18 @@ const userSchema = new mongoose.Schema(
 
 userSchema.index({ location: "2dsphere" });
 
-// ─── THE CRITICAL FIX ────────────────────────────────────────────────────────
-// Notice: No 'next' in function(HERE)
-userSchema.pre("save", async function () {
+// ─── SAFE PRE-SAVE HOOK FOR PASSWORD HASHING ─────────────────────────────────
+userSchema.pre("save", async function (next) {
   if (!this.isModified("password") || !this.password) {
-    return; // Use 'return', NEVER 'next()'
+    return next(); // Correctly passes control forward without hanging
   }
 
   try {
     const salt = await bcrypt.genSalt(12);
     this.password = await bcrypt.hash(this.password, salt);
-    // Do NOT call next() here.
+    next();
   } catch (err) {
-    throw err; 
+    next(err);
   }
 });
 
