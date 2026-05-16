@@ -1,5 +1,6 @@
 const User = require("../models/userModel");
 const jwt = require("jsonwebtoken");
+const { Resend } = require("resend");
 const twilio = require("twilio");
 const { generateReferralCode } = require("../utils/generateReferralCode");
 
@@ -8,27 +9,67 @@ const BUSINESS_ROLES = ["serviceProvider", "RECEPTIONIST", "STYLIST"];
 const CLIENT_ROLES = ["CLIENT"];
 const ALL_ALLOWED_ROLES = [...BUSINESS_ROLES, ...CLIENT_ROLES];
 
+// ─── RESEND CLIENT ─────────────────────────────────────────────────────────────
+const resend = new Resend(process.env.RESEND_API_KEY);
+
 // ─── TWILIO CLIENT ─────────────────────────────────────────────────────────────
-const client = twilio(
+const twilioClient = twilio(
   process.env.TWILIO_ACCOUNT_SID,
   process.env.TWILIO_AUTH_TOKEN
 );
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 const generateToken = (id, role, storeId) => {
-  return jwt.sign(
-    { id, role, storeId },
-    process.env.JWT_SECRET,
-    { expiresIn: "15m" }
-  );
+  return jwt.sign({ id, role, storeId }, process.env.JWT_SECRET, {
+    expiresIn: "15m",
+  });
 };
 
 const generateRefreshToken = (id) => {
-  return jwt.sign(
-    { id },
-    process.env.JWT_REFRESH_SECRET,
-    { expiresIn: "30d" }
-  );
+  return jwt.sign({ id }, process.env.JWT_REFRESH_SECRET, {
+    expiresIn: "30d",
+  });
+};
+
+const generateOtp = () =>
+  Math.floor(100000 + Math.random() * 900000).toString();
+
+const otpEmailTemplate = (otp) => `
+  <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 20px;">
+    <h2 style="color: #6C3EF0;">TurnUP Password Reset</h2>
+    <p>Your OTP code is:</p>
+    <h1 style="color: #6C3EF0; letter-spacing: 10px;">${otp}</h1>
+    <p>Expires in <strong>10 minutes</strong>.</p>
+    <p style="color: #999; font-size: 12px;">If you didn't request this, ignore this email.</p>
+  </div>
+`;
+
+// ─── SEND OTP HELPER ──────────────────────────────────────────────────────────
+const sendOtp = async (user) => {
+  const otp = generateOtp();
+  const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+
+  // Save OTP to DB
+  user.otp = otp;
+  user.otpExpiry = otpExpiry;
+  await user.save();
+
+  if (user.email) {
+    // Send via Resend (email)
+    await resend.emails.send({
+      from: "TurnUP <onboarding@resend.dev>",
+      to: user.email,
+      subject: "TurnUP — Password Reset OTP",
+      html: otpEmailTemplate(otp),
+    });
+  } else if (user.phone) {
+    // Send via Twilio (SMS)
+    await twilioClient.verify.v2
+      .services(process.env.TWILIO_VERIFY_SERVICE_SID)
+      .verifications.create({ to: user.phone, channel: "sms" });
+  }
+
+  return otp;
 };
 
 // ─── REGISTER ─────────────────────────────────────────────────────────────────
@@ -53,7 +94,9 @@ exports.registerUser = async (req, res, next) => {
       });
 
     if (!email && !phone)
-      return res.status(400).json({ message: "Email or phone number is required" });
+      return res
+        .status(400)
+        .json({ message: "Email or phone number is required" });
 
     const orConditions = [];
     if (email) orConditions.push({ email: email.toLowerCase().trim() });
@@ -67,7 +110,9 @@ exports.registerUser = async (req, res, next) => {
 
     let referredBy = null;
     if (isClientTrack && incomingReferralCode) {
-      const referrer = await User.findOne({ referralCode: incomingReferralCode });
+      const referrer = await User.findOne({
+        referralCode: incomingReferralCode,
+      });
       if (referrer) referredBy = referrer._id;
     }
 
@@ -118,7 +163,9 @@ exports.loginUser = async (req, res, next) => {
     const { email, phone, password } = req.body;
 
     if (!email && !phone)
-      return res.status(400).json({ message: "Email or phone number is required" });
+      return res
+        .status(400)
+        .json({ message: "Email or phone number is required" });
 
     const orConditions = [];
     if (email) orConditions.push({ email: email.toLowerCase().trim() });
@@ -152,7 +199,9 @@ const handleSocialLogin = async (req, res, next, provider) => {
   try {
     const { email, name, socialId } = req.body;
     if (!email || !name || !socialId)
-      return res.status(400).json({ message: "email, name and socialId are required" });
+      return res
+        .status(400)
+        .json({ message: "email, name and socialId are required" });
 
     let user = await User.findOne({ email });
 
@@ -186,8 +235,10 @@ const handleSocialLogin = async (req, res, next, provider) => {
   }
 };
 
-exports.googleLogin = (req, res, next) => handleSocialLogin(req, res, next, "google");
-exports.facebookLogin = (req, res, next) => handleSocialLogin(req, res, next, "facebook");
+exports.googleLogin = (req, res, next) =>
+  handleSocialLogin(req, res, next, "google");
+exports.facebookLogin = (req, res, next) =>
+  handleSocialLogin(req, res, next, "facebook");
 exports.socialLogin = (req, res, next) => {
   const { provider } = req.body;
   if (!provider)
@@ -248,11 +299,10 @@ exports.updateProfile = async (req, res, next) => {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
     });
 
-    const user = await User.findByIdAndUpdate(
-      req.user.id,
-      updates,
-      { returnDocument: "after", runValidators: true }
-    ).select("-password -otp -otpExpiry");
+    const user = await User.findByIdAndUpdate(req.user.id, updates, {
+      returnDocument: "after",
+      runValidators: true,
+    }).select("-password -otp -otpExpiry");
 
     res.json({ message: "Profile updated successfully", user });
   } catch (err) {
@@ -317,11 +367,15 @@ exports.updatePassword = async (req, res, next) => {
   try {
     const { currentPassword, newPassword } = req.body;
     if (!currentPassword || !newPassword)
-      return res.status(400).json({ message: "Current and new password required" });
+      return res
+        .status(400)
+        .json({ message: "Current and new password required" });
 
     const user = await User.findById(req.user.id).select("+password");
     if (!user || !(await user.comparePassword(currentPassword)))
-      return res.status(400).json({ message: "Current password is incorrect" });
+      return res
+        .status(400)
+        .json({ message: "Current password is incorrect" });
 
     user.password = newPassword;
     await user.save();
@@ -337,7 +391,9 @@ exports.forgotPassword = async (req, res, next) => {
     const { email, phone } = req.body;
 
     if (!email && !phone)
-      return res.status(400).json({ message: "Email or phone number is required" });
+      return res
+        .status(400)
+        .json({ message: "Email or phone number is required" });
 
     const orConditions = [];
     if (email) orConditions.push({ email: email.toLowerCase().trim() });
@@ -346,13 +402,7 @@ exports.forgotPassword = async (req, res, next) => {
     const user = await User.findOne({ $or: orConditions });
     if (!user) return res.status(404).json({ message: "No account found" });
 
-    // Twilio Verify — sends OTP via email or SMS automatically
-    const channel = email ? "email" : "sms";
-    const to = email ? user.email : user.phone;
-
-    await client.verify.v2
-      .services(process.env.TWILIO_VERIFY_SERVICE_SID)
-      .verifications.create({ to, channel });
+    await sendOtp(user);
 
     res.json({ message: "OTP sent successfully" });
   } catch (err) {
@@ -366,15 +416,21 @@ exports.verifyOtp = async (req, res, next) => {
     const { email, phone, otp } = req.body;
 
     if (!email && !phone)
-      return res.status(400).json({ message: "Email or phone number is required" });
+      return res
+        .status(400)
+        .json({ message: "Email or phone number is required" });
 
-    const to = email ? email.toLowerCase().trim() : phone.trim();
+    const orConditions = [];
+    if (email) orConditions.push({ email: email.toLowerCase().trim() });
+    if (phone) orConditions.push({ phone: phone.trim() });
 
-    const result = await client.verify.v2
-      .services(process.env.TWILIO_VERIFY_SERVICE_SID)
-      .verificationChecks.create({ to, code: otp });
+    const user = await User.findOne({
+      $or: orConditions,
+      otp,
+      otpExpiry: { $gt: Date.now() },
+    });
 
-    if (result.status !== "approved")
+    if (!user)
       return res.status(400).json({ message: "Invalid or expired OTP" });
 
     res.json({ message: "OTP verified successfully" });
@@ -389,26 +445,26 @@ exports.resetPassword = async (req, res, next) => {
     const { email, phone, otp, newPassword } = req.body;
 
     if (!email && !phone)
-      return res.status(400).json({ message: "Email or phone number is required" });
-
-    const to = email ? email.toLowerCase().trim() : phone.trim();
-
-    // Verify OTP one more time before resetting
-    const result = await client.verify.v2
-      .services(process.env.TWILIO_VERIFY_SERVICE_SID)
-      .verificationChecks.create({ to, code: otp });
-
-    if (result.status !== "approved")
-      return res.status(400).json({ message: "Invalid or expired OTP" });
+      return res
+        .status(400)
+        .json({ message: "Email or phone number is required" });
 
     const orConditions = [];
-    if (email) orConditions.push({ email: to });
-    if (phone) orConditions.push({ phone: to });
+    if (email) orConditions.push({ email: email.toLowerCase().trim() });
+    if (phone) orConditions.push({ phone: phone.trim() });
 
-    const user = await User.findOne({ $or: orConditions });
-    if (!user) return res.status(404).json({ message: "User not found" });
+    const user = await User.findOne({
+      $or: orConditions,
+      otp,
+      otpExpiry: { $gt: Date.now() },
+    });
+
+    if (!user)
+      return res.status(400).json({ message: "Invalid or expired OTP" });
 
     user.password = newPassword;
+    user.otp = null;
+    user.otpExpiry = null;
     await user.save();
 
     res.json({ message: "Password reset successfully" });
@@ -423,7 +479,9 @@ exports.resendOtp = async (req, res, next) => {
     const { email, phone } = req.body;
 
     if (!email && !phone)
-      return res.status(400).json({ message: "Email or phone number is required" });
+      return res
+        .status(400)
+        .json({ message: "Email or phone number is required" });
 
     const orConditions = [];
     if (email) orConditions.push({ email: email.toLowerCase().trim() });
@@ -432,12 +490,7 @@ exports.resendOtp = async (req, res, next) => {
     const user = await User.findOne({ $or: orConditions });
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    const channel = email ? "email" : "sms";
-    const to = email ? user.email : user.phone;
-
-    await client.verify.v2
-      .services(process.env.TWILIO_VERIFY_SERVICE_SID)
-      .verifications.create({ to, channel });
+    await sendOtp(user);
 
     res.json({ message: "New OTP sent successfully" });
   } catch (err) {
