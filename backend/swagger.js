@@ -12,7 +12,7 @@ const doc = {
     ? "turnup-backend-j5nf.onrender.com"
     : "localhost:3000",
 
-  basePath: "",
+  basePath: "/api",
 
   schemes: process.env.NODE_ENV === "production" ? ["https"] : ["http"],
 
