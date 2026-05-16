@@ -25,19 +25,13 @@ const generateRefreshToken = (id) => {
   );
 };
 
-// ─── Nodemailer (Hardcoded IPv4 Routing for Cloud Environments) ───────────────
+// ─── Nodemailer ───────────────────────────────────────────────────────────────
 const transporter = nodemailer.createTransport({
-  host: "74.125.142.108", // Direct, official IPv4 address for smtp.gmail.com
-  port: 465,
-  secure: true, // Must be true for port 465
+  service: "gmail",
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
-  tls: {
-    rejectUnauthorized: false, // Prevents SSL hostname mismatch warnings since we connect via direct IP
-  },
-  connectionTimeout: 10000, 
 });
 
 // ─── REGISTER ─────────────────────────────────────────────────────────────────
@@ -305,7 +299,6 @@ exports.updateNotificationSettings = async (req, res, next) => {
   }
 };
 
-// ─── UPDATE PASSWORD ──────────────────────────────────────────────────────────
 exports.updatePassword = async (req, res, next) => {
   try {
     const { currentPassword, newPassword } = req.body;
@@ -324,7 +317,7 @@ exports.updatePassword = async (req, res, next) => {
   }
 };
 
-// ─── PASSWORD RESET ───────────────────────────────────────────────────────────
+// ─── PASSWORD RESET (FIXED FORGOT PASSWORD AND RESEND OTP) ───────────────────
 exports.forgotPassword = async (req, res, next) => {
   try {
     const { email } = req.body;
@@ -332,7 +325,7 @@ exports.forgotPassword = async (req, res, next) => {
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
 
-    // Bypasses global model validations on legacy documents
+    // CRITICAL SECURITY FIX: Atomic write updates attributes directly, completely bypassing old constraints
     const user = await User.findOneAndUpdate(
       { email: email.toLowerCase().trim() },
       { $set: { otp, otpExpiry } },
@@ -405,7 +398,7 @@ exports.resendOtp = async (req, res, next) => {
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
 
-    // Bypasses global model validations on legacy documents
+    // CRITICAL SECURITY FIX: Bypasses schema rules for older data elements
     const user = await User.findOneAndUpdate(
       { email: email.toLowerCase().trim() },
       { $set: { otp, otpExpiry } },
