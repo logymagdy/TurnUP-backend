@@ -6,8 +6,8 @@ const {
   googleLogin,
   facebookLogin,
   socialLogin,
-  logout,        // Added
-  refreshToken,  // Added
+  logout,
+  refreshToken,
   forgotPassword,
   verifyOtp,
   resetPassword,
@@ -16,21 +16,47 @@ const {
 const { protect } = require("../middleware/authMiddleware");
 
 // #swagger.tags = ['Auth']
+// #swagger.path = '/auth/register'
 router.post("/register", registerUser);
-router.post("/login", loginUser);
-router.post("/google", googleLogin);
-router.post("/facebook", facebookLogin);
-router.post("/social-login", socialLogin);
-router.post("/refresh-token", refreshToken); // New: For getting a new JWT
 
-// Password Recovery
+// #swagger.tags = ['Auth']
+// #swagger.path = '/auth/login'
+router.post("/login", loginUser);
+
+// #swagger.tags = ['Auth']
+// #swagger.path = '/auth/google'
+router.post("/google", googleLogin);
+
+// #swagger.tags = ['Auth']
+// #swagger.path = '/auth/facebook'
+router.post("/facebook", facebookLogin);
+
+// #swagger.tags = ['Auth']
+// #swagger.path = '/auth/social-login'
+router.post("/social-login", socialLogin);
+
+// #swagger.tags = ['Auth']
+// #swagger.path = '/auth/refresh-token'
+router.post("/refresh-token", refreshToken);
+
+// #swagger.tags = ['Auth']
+// #swagger.path = '/auth/forgot-password'
 router.post("/forgot-password", forgotPassword);
+
+// #swagger.tags = ['Auth']
+// #swagger.path = '/auth/verify-otp'
 router.post("/verify-otp", verifyOtp);
+
+// #swagger.tags = ['Auth']
+// #swagger.path = '/auth/reset-password'
 router.post("/reset-password", resetPassword);
+
+// #swagger.tags = ['Auth']
+// #swagger.path = '/auth/resend-otp'
 router.post("/resend-otp", resendOtp);
 
-// ─── PROTECTED ROUTES ────────────────────────────────────────────────────────
-
-router.post("/logout", protect, logout); // New: Standard logout
+// #swagger.tags = ['Auth']
+// #swagger.path = '/auth/logout'
+router.post("/logout", protect, logout);
 
 module.exports = router;
