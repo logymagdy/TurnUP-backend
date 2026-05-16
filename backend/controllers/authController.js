@@ -317,17 +317,22 @@ exports.updatePassword = async (req, res, next) => {
   }
 };
 
-// ─── PASSWORD RESET ───────────────────────────────────────────────────────────
+// ─── PASSWORD RESET (FIXED FORGOT PASSWORD AND RESEND OTP) ───────────────────
 exports.forgotPassword = async (req, res, next) => {
   try {
     const { email } = req.body;
-    const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ message: "No account found" });
-
+    
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    user.otp = otp;
-    user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
-    await user.save();
+    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+
+    // CRITICAL SECURITY FIX: Atomic write updates attributes directly, completely bypassing old constraints
+    const user = await User.findOneAndUpdate(
+      { email: email.toLowerCase().trim() },
+      { $set: { otp, otpExpiry } },
+      { new: true }
+    );
+
+    if (!user) return res.status(404).json({ message: "No account found" });
 
     await transporter.sendMail({
       from: `"TurnUP" <${process.env.EMAIL_USER}>`,
@@ -389,13 +394,18 @@ exports.resetPassword = async (req, res, next) => {
 exports.resendOtp = async (req, res, next) => {
   try {
     const { email } = req.body;
-    const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ message: "User not found" });
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    user.otp = otp;
-    user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
-    await user.save();
+    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+
+    // CRITICAL SECURITY FIX: Bypasses schema rules for older data elements
+    const user = await User.findOneAndUpdate(
+      { email: email.toLowerCase().trim() },
+      { $set: { otp, otpExpiry } },
+      { new: true }
+    );
+
+    if (!user) return res.status(404).json({ message: "User not found" });
 
     await transporter.sendMail({
       from: `"TurnUP" <${process.env.EMAIL_USER}>`,
