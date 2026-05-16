@@ -1,12 +1,18 @@
 const User = require("../models/userModel");
 const jwt = require("jsonwebtoken");
-const nodemailer = require("nodemailer");
+const twilio = require("twilio");
 const { generateReferralCode } = require("../utils/generateReferralCode");
 
 // ─── ROLE DEFINITIONS ─────────────────────────────────────────────────────────
 const BUSINESS_ROLES = ["serviceProvider", "RECEPTIONIST", "STYLIST"];
 const CLIENT_ROLES = ["CLIENT"];
 const ALL_ALLOWED_ROLES = [...BUSINESS_ROLES, ...CLIENT_ROLES];
+
+// ─── TWILIO CLIENT ─────────────────────────────────────────────────────────────
+const client = twilio(
+  process.env.TWILIO_ACCOUNT_SID,
+  process.env.TWILIO_AUTH_TOKEN
+);
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 const generateToken = (id, role, storeId) => {
@@ -24,15 +30,6 @@ const generateRefreshToken = (id) => {
     { expiresIn: "30d" }
   );
 };
-
-// ─── Nodemailer ───────────────────────────────────────────────────────────────
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
 
 // ─── REGISTER ─────────────────────────────────────────────────────────────────
 exports.registerUser = async (req, res, next) => {
@@ -55,11 +52,9 @@ exports.registerUser = async (req, res, next) => {
         message: `Invalid role. Must be one of: ${ALL_ALLOWED_ROLES.join(", ")}`,
       });
 
-    // ✅ Must provide at least email or phone
     if (!email && !phone)
       return res.status(400).json({ message: "Email or phone number is required" });
 
-    // ✅ Check duplicate by email OR phone
     const orConditions = [];
     if (email) orConditions.push({ email: email.toLowerCase().trim() });
     if (phone) orConditions.push({ phone: phone.trim() });
@@ -348,41 +343,16 @@ exports.forgotPassword = async (req, res, next) => {
     if (email) orConditions.push({ email: email.toLowerCase().trim() });
     if (phone) orConditions.push({ phone: phone.trim() });
 
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
-
-    const user = await User.findOneAndUpdate(
-      { $or: orConditions },
-      { $set: { otp, otpExpiry } },
-      { returnDocument: "after" }
-    );
-
+    const user = await User.findOne({ $or: orConditions });
     if (!user) return res.status(404).json({ message: "No account found" });
 
-    if (user.email) {
-      try {
-        await transporter.sendMail({
-          from: `"TurnUP" <${process.env.EMAIL_USER}>`,
-          to: user.email,
-          subject: "TurnUP — Password Reset OTP",
-          html: `
-            <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
-              <h2 style="color: #6C3EF0;">TurnUP Password Reset</h2>
-              <p>Your OTP is:</p>
-              <h1 style="color: #6C3EF0; letter-spacing: 10px;">${otp}</h1>
-              <p>Expires in <strong>10 minutes</strong>.</p>
-            </div>
-          `,
-        });
-      } catch (emailErr) {
-        console.error("Email sending failed:", emailErr.message);
-      }
-    }
+    // Twilio Verify — sends OTP via email or SMS automatically
+    const channel = email ? "email" : "sms";
+    const to = email ? user.email : user.phone;
 
-    if (!user.email && user.phone) {
-      console.log(`OTP for ${user.phone}: ${otp}`);
-      // TODO: integrate SMS provider here
-    }
+    await client.verify.v2
+      .services(process.env.TWILIO_VERIFY_SERVICE_SID)
+      .verifications.create({ to, channel });
 
     res.json({ message: "OTP sent successfully" });
   } catch (err) {
@@ -398,17 +368,13 @@ exports.verifyOtp = async (req, res, next) => {
     if (!email && !phone)
       return res.status(400).json({ message: "Email or phone number is required" });
 
-    const orConditions = [];
-    if (email) orConditions.push({ email: email.toLowerCase().trim() });
-    if (phone) orConditions.push({ phone: phone.trim() });
+    const to = email ? email.toLowerCase().trim() : phone.trim();
 
-    const user = await User.findOne({
-      $or: orConditions,
-      otp,
-      otpExpiry: { $gt: Date.now() },
-    });
+    const result = await client.verify.v2
+      .services(process.env.TWILIO_VERIFY_SERVICE_SID)
+      .verificationChecks.create({ to, code: otp });
 
-    if (!user)
+    if (result.status !== "approved")
       return res.status(400).json({ message: "Invalid or expired OTP" });
 
     res.json({ message: "OTP verified successfully" });
@@ -425,22 +391,24 @@ exports.resetPassword = async (req, res, next) => {
     if (!email && !phone)
       return res.status(400).json({ message: "Email or phone number is required" });
 
-    const orConditions = [];
-    if (email) orConditions.push({ email: email.toLowerCase().trim() });
-    if (phone) orConditions.push({ phone: phone.trim() });
+    const to = email ? email.toLowerCase().trim() : phone.trim();
 
-    const user = await User.findOne({
-      $or: orConditions,
-      otp,
-      otpExpiry: { $gt: Date.now() },
-    });
+    // Verify OTP one more time before resetting
+    const result = await client.verify.v2
+      .services(process.env.TWILIO_VERIFY_SERVICE_SID)
+      .verificationChecks.create({ to, code: otp });
 
-    if (!user)
+    if (result.status !== "approved")
       return res.status(400).json({ message: "Invalid or expired OTP" });
 
+    const orConditions = [];
+    if (email) orConditions.push({ email: to });
+    if (phone) orConditions.push({ phone: to });
+
+    const user = await User.findOne({ $or: orConditions });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
     user.password = newPassword;
-    user.otp = null;
-    user.otpExpiry = null;
     await user.save();
 
     res.json({ message: "Password reset successfully" });
@@ -461,41 +429,15 @@ exports.resendOtp = async (req, res, next) => {
     if (email) orConditions.push({ email: email.toLowerCase().trim() });
     if (phone) orConditions.push({ phone: phone.trim() });
 
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
-
-    const user = await User.findOneAndUpdate(
-      { $or: orConditions },
-      { $set: { otp, otpExpiry } },
-      { returnDocument: "after" }
-    );
-
+    const user = await User.findOne({ $or: orConditions });
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    if (user.email) {
-      try {
-        await transporter.sendMail({
-          from: `"TurnUP" <${process.env.EMAIL_USER}>`,
-          to: user.email,
-          subject: "TurnUP — New OTP",
-          html: `
-            <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
-              <h2 style="color: #6C3EF0;">TurnUP — New OTP</h2>
-              <p>Your new OTP is:</p>
-              <h1 style="color: #6C3EF0; letter-spacing: 10px;">${otp}</h1>
-              <p>Expires in <strong>10 minutes</strong>.</p>
-            </div>
-          `,
-        });
-      } catch (emailErr) {
-        console.error("Email sending failed:", emailErr.message);
-      }
-    }
+    const channel = email ? "email" : "sms";
+    const to = email ? user.email : user.phone;
 
-    if (!user.email && user.phone) {
-      console.log(`OTP for ${user.phone}: ${otp}`);
-      // TODO: integrate SMS provider here
-    }
+    await client.verify.v2
+      .services(process.env.TWILIO_VERIFY_SERVICE_SID)
+      .verifications.create({ to, channel });
 
     res.json({ message: "New OTP sent successfully" });
   } catch (err) {
