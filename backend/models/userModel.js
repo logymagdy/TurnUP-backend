@@ -7,8 +7,8 @@ const userSchema = new mongoose.Schema(
     username: { type: String, required: false, trim: true },
     email: {
       type: String,
-      required: [true, "Email is required"],
       unique: true,
+      sparse: true,
       lowercase: true,
       trim: true,
     },
@@ -41,7 +41,7 @@ const userSchema = new mongoose.Schema(
     otpExpiry: { type: Date, default: null },
     resetPasswordOtp: { type: String, default: null },
     resetPasswordExpires: { type: Date, default: null },
-    referralCode: { type: String, default: null },
+    referralCode: { type: String, default: null, unique: true, sparse: true },
     referredBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
     wallet: { type: Number, default: 0 },
     debt: { type: Number, default: 0 },
@@ -78,18 +78,16 @@ const userSchema = new mongoose.Schema(
 
 userSchema.index({ location: "2dsphere" });
 
-// ─── BACK TO YOUR ORIGINAL KEY-FOR-KEY HOOK STRUCTURE ────────────────────────
 userSchema.pre("save", async function () {
   if (!this.isModified("password") || !this.password) {
-    return; // Use 'return', NEVER 'next()'
+    return;
   }
 
   try {
     const salt = await bcrypt.genSalt(12);
     this.password = await bcrypt.hash(this.password, salt);
-    // Do NOT call next() here.
   } catch (err) {
-    throw err; 
+    throw err;
   }
 });
 
