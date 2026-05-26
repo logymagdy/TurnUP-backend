@@ -4,7 +4,6 @@ const Store = require("../models/storeModel");
 const { success, error } = require("../utils/responseHandler");
 const { sendNotification } = require("../services/notificationServices");
 
-// ─── CLIENT: SUBMIT COMPLAINT ─────────────────────────────────────────────────
 exports.submitComplaint = async (req, res) => {
   try {
     const { appointmentId, category, message, images } = req.body;
@@ -25,13 +24,11 @@ exports.submitComplaint = async (req, res) => {
         message: "Complaints can only be submitted for completed appointments.",
       });
 
-    // ── 2. One complaint per appointment ───────────────────────────────
     if (appointment.complaintId)
       return res.status(400).json({
         message: "A complaint has already been submitted for this appointment.",
       });
 
-    // ── 3. Create complaint — storeId auto-linked from appointment ─────
     const complaint = await Complaint.create({
       appointmentId,
       storeId: appointment.storeId,
@@ -42,11 +39,9 @@ exports.submitComplaint = async (req, res) => {
       status: "SUBMITTED",
     });
 
-    // ── 4. Stamp appointment to block duplicate complaints ─────────────
     appointment.complaintId = complaint._id;
     await appointment.save();
 
-    // ── 5. Notify store owner ──────────────────────────────────────────
     const store = await Store.findById(appointment.storeId).select("owner storeName");
     if (store) {
       await sendNotification(
@@ -73,8 +68,6 @@ exports.submitComplaint = async (req, res) => {
   }
 };
 
-// ─── CLIENT: GET MY COMPLAINTS ────────────────────────────────────────────────
-// Returns only client-safe fields — no adminNotes, no internal data
 exports.getMyComplaints = async (req, res) => {
   try {
     const complaints = await Complaint.find({ client: req.user.id })
@@ -89,7 +82,6 @@ exports.getMyComplaints = async (req, res) => {
   }
 };
 
-// ─── STORE: GET STORE COMPLAINTS ──────────────────────────────────────────────
 exports.getStoreComplaints = async (req, res) => {
   try {
     if (!req.user.storeId)

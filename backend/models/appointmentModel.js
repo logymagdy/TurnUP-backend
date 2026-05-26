@@ -47,10 +47,11 @@ const appointmentSchema = new mongoose.Schema(
 
     date: { type: String, required: true },
     time: { type: String, required: true },
+
+    // ✅ Removed PENDING — bookings are auto-confirmed if store is open
     status: {
       type: String,
       enum: [
-        "PENDING",
         "CONFIRMED",
         "CHECKED_IN",
         "IN_SERVICE",
@@ -59,8 +60,9 @@ const appointmentSchema = new mongoose.Schema(
         "NO_SHOW",
         "EXPIRED",
       ],
-      default: "PENDING",
+      default: "CONFIRMED",
     },
+
     bookingType: {
       type: String,
       enum: ["NORMAL", "HOME", "EVENT"],
@@ -76,6 +78,12 @@ const appointmentSchema = new mongoose.Schema(
     checkInTime: { type: Date, default: null },
     actualStartTime: { type: Date, default: null },
     actualEndTime: { type: Date, default: null },
+
+    // ── Expiry notification tracking ───────────────────────────────────
+    expiryWarningsSent: {
+      thirtyMin: { type: Boolean, default: false },
+      tenMin: { type: Boolean, default: false },
+    },
 
     // ── Payment & Deposit ──────────────────────────────────────────────
     deposit: { type: Number, default: 0 },
@@ -115,7 +123,7 @@ const appointmentSchema = new mongoose.Schema(
     ratedAt: { type: Date, default: null },
     ratingDeadline: { type: Date, default: null },
 
-    // ── Complaint — one per appointment, set after submission ──────────
+    // ── Complaint ──────────────────────────────────────────────────────
     complaintId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Complaint",
