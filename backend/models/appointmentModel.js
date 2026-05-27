@@ -38,6 +38,7 @@ const appointmentSchema = new mongoose.Schema(
     date: { type: String, required: true },
     time: { type: String, required: true },
 
+    // ✅ No PENDING — auto CONFIRMED
     status: {
       type: String,
       enum: [
@@ -59,9 +60,11 @@ const appointmentSchema = new mongoose.Schema(
     },
     address: { type: String, default: null },
 
+    // ✅ Walk-in support
     isWalkIn: { type: Boolean, default: false },
     walkInClientName: { type: String, default: null },
 
+    // ── Queue ──────────────────────────────────────────────────────────
     queueNumber: { type: Number, default: null },
     estimatedStartTime: { type: Date, default: null },
     expiryTime: { type: Date, default: null },
@@ -70,19 +73,23 @@ const appointmentSchema = new mongoose.Schema(
     actualStartTime: { type: Date, default: null },
     actualEndTime: { type: Date, default: null },
 
-    // ✅ Tracks if "you're next" notification was sent
-    youreNextSent: { type: Boolean, default: false },
-
+    // ✅ Expiry warning tracking
     expiryWarningsSent: {
       thirtyMin: { type: Boolean, default: false },
       tenMin: { type: Boolean, default: false },
     },
 
+    // ✅ You're next notification tracking
+    youreNextSent: { type: Boolean, default: false },
+
+    // ── Payment ────────────────────────────────────────────────────────
     deposit: { type: Number, default: 0 },
     depositPaid: { type: Boolean, default: false },
     depositRefunded: { type: Boolean, default: false },
     paymentId: { type: String, default: null },
     isPaid: { type: Boolean, default: false },
+
+    // ✅ Updated payment method — CARD or PAY_AT_STORE
     paymentMethod: {
       type: String,
       enum: ["CARD", "PAY_AT_STORE", null],
@@ -92,6 +99,7 @@ const appointmentSchema = new mongoose.Schema(
     refundId: { type: String, default: null },
     refundedAt: { type: Date, default: null },
 
+    // ── Group Bookings ─────────────────────────────────────────────────
     isGroupBooking: { type: Boolean, default: false },
     groupMembers: [
       {
@@ -107,9 +115,10 @@ const appointmentSchema = new mongoose.Schema(
     ],
     totalGroupPrice: { type: Number, default: 0 },
 
+    // ── Post-Service ───────────────────────────────────────────────────
     rating: { type: Number, min: 1, max: 5, default: null },
     review: { type: String, default: null },
-    reviewPhotos: [{ type: String }],  // ✅ photos attached to review
+    reviewPhotos: [{ type: String }],
     ratedAt: { type: Date, default: null },
     ratingDeadline: { type: Date, default: null },
 
