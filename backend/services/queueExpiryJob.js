@@ -6,21 +6,103 @@ const { calculateLiveQueue } = require("./queueService");
 const { emitFullQueueRefresh } = require("./queueSocket");
 
 /**
- * Runs on a schedule every 60 seconds via setInterval in app.js
- * Finds all NORMAL bookings where expiryTime has passed
- * and status is still PENDING, CONFIRMED, or CHECKED_IN
- * Marks them EXPIRED, applies store-defined penalty,
- * then recalculates and emits the updated queue to the store dashboard
+ * Runs every 60 seconds via setInterval in app.js
+ * Handles:
+ * 1. Expiry warning notifications (30 mins and 10 mins before expiry)
+ * 2. Marking expired bookings and applying penalties
+ * 3. Emitting queue refresh to affected stores
  */
 const runQueueExpiryJob = async (io = null) => {
   try {
     const now = new Date();
     const today = now.toISOString().split("T")[0];
 
+    // ── 1. Send 30-min expiry warning ──────────────────────────────────
+    const thirtyMinWarningTime = new Date(now.getTime() + 30 * 60 * 1000);
+    const needsThirtyMinWarning = await Appointment.find({
+      bookingType: "NORMAL",
+      date: today,
+      status: { $in: ["CONFIRMED", "CHECKED_IN"] },
+      expiryTime: {
+        $gte: now,
+        $lte: thirtyMinWarningTime,
+      },
+      "expiryWarningsSent.thirtyMin": false,
+    });
+
+    for (const appointment of needsThirtyMinWarning) {
+      const minutesLeft = Math.round(
+        (new Date(appointment.expiryTime) - now) / (1000 * 60)
+      );
+
+      await sendNotification(
+        appointment.client,
+        "TURN_EXPIRED",
+        `⚠️ Your queue slot #${appointment.queueNumber} will expire in ${minutesLeft} minutes. Please arrive soon!`,
+        "Queue Expiring Soon",
+        appointment._id,
+        "APPOINTMENT"
+      );
+
+      // Emit countdown data to client's socket room
+      if (io) {
+        io.to(String(appointment.client)).emit("expiryCountdown", {
+          appointmentId: appointment._id,
+          queueNumber: appointment.queueNumber,
+          expiryTime: appointment.expiryTime,
+          minutesLeft,
+        });
+      }
+
+      appointment.expiryWarningsSent.thirtyMin = true;
+      await appointment.save();
+    }
+
+    // ── 2. Send 10-min expiry warning ──────────────────────────────────
+    const tenMinWarningTime = new Date(now.getTime() + 10 * 60 * 1000);
+    const needsTenMinWarning = await Appointment.find({
+      bookingType: "NORMAL",
+      date: today,
+      status: { $in: ["CONFIRMED", "CHECKED_IN"] },
+      expiryTime: {
+        $gte: now,
+        $lte: tenMinWarningTime,
+      },
+      "expiryWarningsSent.tenMin": false,
+    });
+
+    for (const appointment of needsTenMinWarning) {
+      const minutesLeft = Math.round(
+        (new Date(appointment.expiryTime) - now) / (1000 * 60)
+      );
+
+      await sendNotification(
+        appointment.client,
+        "TURN_EXPIRED",
+        `🚨 URGENT: Your queue slot #${appointment.queueNumber} expires in ${minutesLeft} minutes!`,
+        "Queue Expiring Now",
+        appointment._id,
+        "APPOINTMENT"
+      );
+
+      if (io) {
+        io.to(String(appointment.client)).emit("expiryCountdown", {
+          appointmentId: appointment._id,
+          queueNumber: appointment.queueNumber,
+          expiryTime: appointment.expiryTime,
+          minutesLeft,
+        });
+      }
+
+      appointment.expiryWarningsSent.tenMin = true;
+      await appointment.save();
+    }
+
+    // ── 3. Mark expired bookings ───────────────────────────────────────
     const expiredBookings = await Appointment.find({
       bookingType: "NORMAL",
       date: today,
-      status: { $in: ["PENDING", "CONFIRMED", "CHECKED_IN"] },
+      status: { $in: ["CONFIRMED", "CHECKED_IN"] },
       expiryTime: { $lte: now },
     });
 
@@ -42,7 +124,7 @@ const runQueueExpiryJob = async (io = null) => {
       await sendNotification(
         appointment.client,
         "TURN_EXPIRED",
-        `Your turn at the store has expired. A penalty of ${penalty} EGP has been applied.`,
+        `Your turn at ${store?.storeName} has expired. A penalty of ${penalty} EGP has been applied.`,
         "Turn Expired",
         appointment._id,
         "APPOINTMENT"
@@ -69,6 +151,7 @@ const runQueueExpiryJob = async (io = null) => {
       affectedStoreIds.add(String(appointment.storeId));
     }
 
+    // ── 4. Refresh queues for affected stores ──────────────────────────
     if (io && affectedStoreIds.size > 0) {
       for (const storeId of affectedStoreIds) {
         const queueData = await calculateLiveQueue(storeId, today);
