@@ -44,7 +44,7 @@ exports.createBooking = async (req, res) => {
       paymentMethod,
     } = req.body;
 
-    // ── 1. Store exists, is approved and active ────────────────────────
+    // ── 1. Store exists and is approved ───────────────────────────────
     const store = await Store.findById(storeId);
     if (!store)
       return res.status(404).json({ message: "Store not found." });
@@ -52,14 +52,21 @@ exports.createBooking = async (req, res) => {
     if (store.approvalStatus !== "APPROVED")
       return res.status(403).json({ message: "This store is not currently accepting bookings." });
 
+    // ── 2. Check store is open and not paused ──────────────────────────
+    if (!store.isOpen)
+      return res.status(403).json({ message: "This store is currently closed." });
+
+    if (store.isPaused)
+      return res.status(403).json({ message: "This store is temporarily paused. Please try again shortly." });
+
     if (
-      store.status === "SUSPENDED" ||
       store.operationalStatus === "SUSPENDED" ||
       store.operationalStatus === "BANNED"
     )
       return res.status(403).json({ message: "This store is temporarily unavailable." });
 
-    // ── 2. Client has no outstanding debt ──────────────────────────────
+    // ── 3. Client debt check ───────────────────────────────────────────
+    // Client can still book but debt must be paid before next booking
     const client = await User.findById(req.user.id).select("debt");
     if (client.debt > 0)
       return res.status(403).json({
@@ -67,13 +74,18 @@ exports.createBooking = async (req, res) => {
         debt: client.debt,
       });
 
-    // ── 3. Validate services array ─────────────────────────────────────
+    // ── 4. Validate services array ─────────────────────────────────────
     if (!rawServices || !Array.isArray(rawServices) || rawServices.length === 0)
       return res.status(400).json({ message: "At least one service is required." });
 
     const services = deduplicateServices(rawServices);
 
     for (const svc of services) {
+      if (!svc.durationMin || !svc.durationMax || svc.durationMin <= 0 || svc.durationMax <= 0)
+        return res.status(400).json({
+          message: `Service "${svc.name}" has invalid duration. durationMin and durationMax are required.`,
+        });
+
       const storeService = store.services.find(
         (s) => s.name === svc.name && s.isActive
       );
@@ -90,25 +102,53 @@ exports.createBooking = async (req, res) => {
     const totalAmount = calculateServicesTotal(services);
     const primaryService = services[0];
 
-    // ── 4. Stylist is not double booked ────────────────────────────────
+    // ── 5. Stylist double-booking check ───────────────────────────────
     const existingAppointment = await Appointment.findOne({
       stylist: stylistId,
       date,
       time,
-      status: { $in: ["PENDING", "CONFIRMED", "IN_SERVICE"] },
+      status: { $in: ["CONFIRMED", "CHECKED_IN", "IN_SERVICE"] },
     });
 
     if (existingAppointment)
       return res.status(400).json({ message: "Stylist already booked for this time." });
 
-    // ── 5. Validate stylist belongs to this store ──────────────────────
+    // ── 6. Stylist belongs to this store ──────────────────────────────
     const stylistInStore = store.stylists.some(
       (s) => String(s) === String(stylistId)
     );
     if (!stylistInStore)
       return res.status(400).json({ message: "Selected stylist does not belong to this store." });
 
-    // ── 6. Calculate deposit for HOME / EVENT only ─────────────────────
+    // ── 7. Group booking validation ───────────────────────────────────
+    let totalGroupPrice = 0;
+    let validatedGroupMembers = [];
+
+    if (isGroupBooking) {
+      if (!groupMembers || groupMembers.length < 1)
+        return res.status(400).json({
+          message: "Group booking requires at least 2 members including yourself.",
+        });
+
+      // ✅ NORMAL online booking max 2 members (booker + 1)
+      // ✅ HOME/EVENT booking max 7 members (booker + 6)
+      const maxGroup = (bookingType === "HOME" || bookingType === "EVENT")
+        ? 7
+        : 2;
+
+      if (groupMembers.length + 1 > maxGroup)
+        return res.status(400).json({
+          message: `Group size exceeds maximum allowed for ${bookingType || "NORMAL"} bookings (${maxGroup} members total).`,
+        });
+
+      totalGroupPrice = groupMembers.reduce(
+        (sum, m) => sum + (m.service?.price || 0),
+        totalAmount
+      );
+      validatedGroupMembers = groupMembers;
+    }
+
+    // ── 8. Deposit calculation for HOME / EVENT ───────────────────────
     let depositAmount = 0;
     if (bookingType === "HOME" || bookingType === "EVENT") {
       if (!address)
@@ -129,43 +169,20 @@ exports.createBooking = async (req, res) => {
       }
     }
 
-    // ── 7. Assign queue slot for NORMAL bookings ───────────────────────
+    // ── 9. Assign queue slot for NORMAL bookings ───────────────────────
     let queueNumber = null;
     let estimatedStartTime = null;
     let expiryTime = null;
 
     if (!bookingType || bookingType === "NORMAL") {
-      const expiryMinutes = store.settings?.queueExpiryMinutes ?? 20;
+      const expiryMinutes = store.settings?.queueExpiryMinutes ?? 30;
       const slot = await assignQueueSlot(storeId, date, time, expiryMinutes);
       queueNumber = slot.queueNumber;
       estimatedStartTime = slot.estimatedStartTime;
       expiryTime = slot.expiryTime;
     }
 
-    // ── 8. Validate group booking ──────────────────────────────────────
-    let totalGroupPrice = 0;
-    let validatedGroupMembers = [];
-
-    if (isGroupBooking) {
-      if (!groupMembers || groupMembers.length < 1)
-        return res.status(400).json({
-          message: "Group booking requires at least 2 members including yourself.",
-        });
-
-      const maxGroup = store.settings?.maxGroupSize || 10;
-      if (groupMembers.length + 1 > maxGroup)
-        return res.status(400).json({
-          message: `Group size exceeds the maximum allowed (${maxGroup} members).`,
-        });
-
-      totalGroupPrice = groupMembers.reduce(
-        (sum, m) => sum + (m.service?.price || 0),
-        totalAmount
-      );
-      validatedGroupMembers = groupMembers;
-    }
-
-    // ── 9. Create appointment ──────────────────────────────────────────
+    // ── 10. Create appointment — directly CONFIRMED (no PENDING) ───────
     const newAppointment = new Appointment({
       storeId,
       client: req.user.id,
@@ -175,6 +192,7 @@ exports.createBooking = async (req, res) => {
       totalAmount,
       date,
       time,
+      status: "CONFIRMED", // ✅ Always CONFIRMED directly
       bookingType: bookingType || "NORMAL",
       address: bookingType === "HOME" || bookingType === "EVENT" ? address : null,
       deposit: depositAmount,
@@ -192,10 +210,9 @@ exports.createBooking = async (req, res) => {
 
     await newAppointment.save();
 
-    // ── 10. Emit queue update ──────────────────────────────────────────
+    // ── 11. Emit queue update ──────────────────────────────────────────
     const io = req.app.get("io");
     await refreshQueue(io, storeId, date);
-
     emitQueueUpdate(io, storeId, "queueChanged", {
       type: "NEW_BOOKING",
       queueNumber,
@@ -203,7 +220,7 @@ exports.createBooking = async (req, res) => {
       time,
     });
 
-    // ── 11. Notify client ──────────────────────────────────────────────
+    // ── 12. Notify client ──────────────────────────────────────────────
     const queueMsg = queueNumber
       ? `Queue #${queueNumber} on ${date} at ${time}.`
       : `Appointment on ${date} at ${time}.`;
@@ -217,7 +234,7 @@ exports.createBooking = async (req, res) => {
       "APPOINTMENT"
     );
 
-    // ── 12. Notify store owner ─────────────────────────────────────────
+    // ── 13. Notify store owner ─────────────────────────────────────────
     await sendNotification(
       store.owner,
       "NEW_BOOKING",
@@ -234,6 +251,9 @@ exports.createBooking = async (req, res) => {
       depositAmount,
       totalAmount,
       servicesCount: services.length,
+      queueNumber,
+      estimatedStartTime,
+      expiryTime,
     });
   } catch (err) {
     return res.status(500).json({ message: err.message });
@@ -318,7 +338,7 @@ exports.cancelBooking = async (req, res) => {
     let refundAmount = 0;
 
     if (appointment.bookingType === "NORMAL") {
-      const allowedMinutes = policy?.normalCancellationMinutes ?? 20;
+      const allowedMinutes = policy?.normalCancellationMinutes ?? 30;
       const estimatedStart = new Date(appointment.estimatedStartTime);
       const minutesUntilStart = (estimatedStart - now) / (1000 * 60);
 
@@ -471,6 +491,7 @@ exports.cancelBookingByStore = async (req, res) => {
     appointment.cancellationReason = reason || null;
     await appointment.save();
 
+    // ✅ Client gets 50 loyalty points when store cancels
     await User.findByIdAndUpdate(appointment.client, {
       $inc: { points: 50 },
     });
@@ -563,9 +584,8 @@ exports.completeService = async (req, res) => {
     appointment.ratingDeadline = new Date(Date.now() + 24 * 60 * 60 * 1000);
     await appointment.save();
 
-    const pointsEarned = Math.floor(
-      appointment.totalAmount || appointment.service.price || 0
-    );
+    // ✅ Points earned = total amount paid
+    const pointsEarned = Math.floor(appointment.totalAmount || appointment.service.price || 0);
     await User.findByIdAndUpdate(appointment.client, {
       $inc: { points: pointsEarned },
     });
@@ -617,7 +637,7 @@ exports.markNoShow = async (req, res) => {
     if (String(appointment.storeId) !== String(req.user.storeId))
       return res.status(403).json({ message: "Not authorized." });
 
-    if (!["PENDING", "CONFIRMED", "CHECKED_IN"].includes(appointment.status))
+    if (!["CONFIRMED", "CHECKED_IN"].includes(appointment.status))
       return res.status(400).json({ message: "Cannot mark this booking as no-show." });
 
     appointment.status = "NO_SHOW";
