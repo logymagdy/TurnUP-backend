@@ -1,15 +1,19 @@
 const User = require("../models/userModel");
 const jwt = require("jsonwebtoken");
-const { Resend } = require("resend");
 const twilio = require("twilio");
 const { generateReferralCode } = require("../utils/generateReferralCode");
+const Brevo = require("@getbrevo/brevo");
 
 const BUSINESS_ROLES = ["serviceProvider", "RECEPTIONIST", "STYLIST"];
 const CLIENT_ROLES = ["CLIENT"];
 const ALL_ALLOWED_ROLES = [...BUSINESS_ROLES, ...CLIENT_ROLES];
 
-// ─── RESEND CLIENT ─────────────────────────────────────────────────────────────
-const resend = new Resend(process.env.RESEND_API_KEY);
+// ─── BREVO EMAIL CLIENT ────────────────────────────────────────────────────────
+const brevoClient = new Brevo.TransactionalEmailsApi();
+brevoClient.setApiKey(
+  Brevo.TransactionalEmailsApiApiKeys.apiKey,
+  process.env.BREVO_API_KEY
+);
 
 // ─── TWILIO CLIENT ─────────────────────────────────────────────────────────────
 let twilioClient = null;
@@ -38,15 +42,21 @@ const generateOtp = () =>
 
 // ─── OTP EMAIL TEMPLATE ────────────────────────────────────────────────────────
 const otpEmailTemplate = (otp) => `
-  <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background: #0f0f0f; color: #fff; border-radius: 12px;">
-    <h2 style="color: #6C3EF0; margin-bottom: 8px;">TurnUP</h2>
-    <p style="color: #ccc;">Your verification code is:</p>
-    <div style="background: #1a1a1a; border-radius: 8px; padding: 20px; text-align: center; margin: 20px 0;">
-      <h1 style="color: #6C3EF0; font-size: 40px; letter-spacing: 16px; margin: 0;">${otp}</h1>
+<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:0;background:#0f0f0f;font-family:Arial,sans-serif;">
+  <div style="max-width:480px;margin:40px auto;background:#1a1a1a;border-radius:16px;padding:32px;">
+    <h2 style="color:#6C3EF0;margin:0 0 8px 0;font-size:28px;">TurnUP</h2>
+    <p style="color:#aaa;margin:0 0 24px 0;font-size:14px;">Smart Queue & Booking</p>
+    <p style="color:#fff;font-size:16px;margin:0 0 16px 0;">Your verification code is:</p>
+    <div style="background:#0f0f0f;border:2px solid #6C3EF0;border-radius:12px;padding:24px;text-align:center;margin:0 0 24px 0;">
+      <span style="color:#6C3EF0;font-size:48px;font-weight:bold;letter-spacing:16px;">${otp}</span>
     </div>
-    <p style="color: #ccc;">This code expires in <strong>10 minutes</strong>.</p>
-    <p style="color: #666; font-size: 12px;">If you didn't request this, please ignore this email.</p>
+    <p style="color:#aaa;font-size:14px;margin:0 0 8px 0;">⏰ Expires in <strong style="color:#fff;">10 minutes</strong>.</p>
+    <p style="color:#555;font-size:12px;margin:0;">If you didn't request this, ignore this email.</p>
   </div>
+</body>
+</html>
 `;
 
 // ─── SEND OTP HELPER ──────────────────────────────────────────────────────────
@@ -59,21 +69,20 @@ const sendOtp = async (user) => {
   await user.save();
 
   if (user.email) {
-    // ✅ Resend — works on Render, sends to ANY email address
-    // Must use your verified domain in FROM field
-    // If domain not verified yet, use: delivered@resend.dev for testing
-    const fromEmail = process.env.RESEND_FROM_EMAIL || "TurnUP <onboarding@resend.dev>";
-
     try {
-      const result = await resend.emails.send({
-        from: fromEmail,
-        to: [user.email], // ✅ sends to the actual user's email
-        subject: "TurnUP — Your Verification Code",
-        html: otpEmailTemplate(otp),
-      });
-      console.log(`✅ OTP email sent to ${user.email}:`, result);
+      const sendSmtpEmail = new Brevo.SendSmtpEmail();
+      sendSmtpEmail.subject = "TurnUP — Your Verification Code";
+      sendSmtpEmail.htmlContent = otpEmailTemplate(otp);
+      sendSmtpEmail.sender = {
+        name: process.env.EMAIL_FROM_NAME || "TurnUP",
+        email: process.env.EMAIL_FROM || "logymagdy8@gmail.com",
+      };
+      sendSmtpEmail.to = [{ email: user.email }];
+
+      await brevoClient.sendTransacEmail(sendSmtpEmail);
+      console.log(`✅ OTP sent to ${user.email}`);
     } catch (emailErr) {
-      console.error(`❌ Resend failed for ${user.email}:`, emailErr.message);
+      console.error(`❌ Brevo failed for ${user.email}:`, emailErr.message);
       throw new Error("Failed to send OTP email. Please try again.");
     }
   } else if (user.phone && twilioClient) {
@@ -83,7 +92,7 @@ const sendOtp = async (user) => {
         .verifications.create({ to: user.phone, channel: "sms" });
       console.log(`✅ OTP SMS sent to ${user.phone}`);
     } catch (smsErr) {
-      console.error(`❌ Twilio failed for ${user.phone}:`, smsErr.message);
+      console.error(`❌ Twilio failed:`, smsErr.message);
       throw new Error("Failed to send OTP SMS. Please try again.");
     }
   }
@@ -200,7 +209,7 @@ exports.loginUser = async (req, res, next) => {
       refreshToken,
       role: user.role,
       userId: user._id,
-      username: user.username,       // ✅ consistent field name
+      username: user.username,
       email: user.email,
       phone: user.phone,
       avatar: user.avatar,
@@ -226,7 +235,6 @@ const handleSocialLogin = async (req, res, next, provider) => {
     let user = await User.findOne({ email });
 
     if (!user) {
-      // ✅ Generate referral code for new social client
       let newReferralCode = null;
       let unique = false;
       while (!unique) {
