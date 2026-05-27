@@ -1,64 +1,110 @@
 const jwt = require("jsonwebtoken");
 
-/**
- *  PROTECT: Verifies JWT and attaches user to Request
- */
+// ─── PROTECT ──────────────────────────────────────────────────────────────────
 const protect = (req, res, next) => {
-  const token = req.headers.authorization?.split(" ")[1];
+  const authHeader = req.headers.authorization;
 
-  if (!token) {
+  // ✅ Check header exists and starts with Bearer
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return res.status(401).json({ message: "No token, authorization denied" });
+  }
+
+  const token = authHeader.split(" ")[1];
+
+  // ✅ Check token is not empty
+  if (!token || token === "undefined" || token === "null") {
+    return res.status(401).json({ message: "Invalid token format" });
   }
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    
-    // Attaching the user payload (id, role, storeId) to the request object
+
+    // ✅ Validate token has required fields
+    if (!decoded.id || !decoded.role) {
+      return res.status(401).json({ message: "Invalid token payload" });
+    }
+
     req.user = decoded;
     next();
   } catch (err) {
-    res.status(401).json({ message: "Token is not valid or has expired" });
+    // ✅ Specific error messages for different JWT errors
+    if (err.name === "TokenExpiredError") {
+      return res.status(401).json({
+        message: "Token expired. Please refresh your token.",
+        code: "TOKEN_EXPIRED",
+      });
+    }
+    if (err.name === "JsonWebTokenError") {
+      return res.status(401).json({
+        message: "Invalid token",
+        code: "TOKEN_INVALID",
+      });
+    }
+    return res.status(401).json({ message: "Token verification failed" });
   }
 };
 
-/**
- * 🛡️ ALLOW ROLES: Restricts access to specific user types
- * Use: allowRoles("serviceProvider", "ADMIN")
- */
+// ─── ALLOW ROLES ──────────────────────────────────────────────────────────────
 const allowRoles = (...roles) => {
   return (req, res, next) => {
-    // Safety check: ensure 'protect' middleware was called first
     if (!req.user) {
-      return res.status(500).json({ message: "Internal Auth Error: User object missing" });
+      return res.status(500).json({ message: "Internal Auth Error: User missing" });
     }
 
     if (!roles.includes(req.user.role)) {
-      return res.status(403).json({ 
-        message: `Access denied: Role '${req.user.role}' is not authorized for this action` 
+      return res.status(403).json({
+        message: `Access denied: Role '${req.user.role}' is not authorized`,
+        code: "FORBIDDEN",
       });
     }
     next();
   };
 };
 
-/**
- * 🏗️ ENFORCE STORE ISOLATION: Data Security
- * Prevents a provider from one shop seeing/editing data from another shop.
- */
+// ─── ENFORCE STORE ISOLATION ──────────────────────────────────────────────────
 const enforceStoreIsolation = (req, res, next) => {
   if (!req.user) return res.status(401).json({ message: "Not authenticated" });
 
-  // Admins can see everything; others are locked to their own store
   if (req.user.role !== "ADMIN") {
     if (!req.user.storeId) {
-      return res.status(403).json({ message: "Access denied: User is not linked to a store" });
+      return res.status(403).json({
+        message: "Access denied: Not linked to a store",
+        code: "NO_STORE",
+      });
     }
     req.storeFilter = { storeId: req.user.storeId };
   } else {
-    req.storeFilter = {}; // Admin bypass
+    req.storeFilter = {};
   }
-  
+
   next();
 };
 
-module.exports = { protect, allowRoles, enforceStoreIsolation };
+// ─── OPTIONAL AUTH ────────────────────────────────────────────────────────────
+// ✅ Used for routes that work both logged in and logged out
+const optionalAuth = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    req.user = null;
+    return next();
+  }
+
+  const token = authHeader.split(" ")[1];
+
+  if (!token || token === "undefined" || token === "null") {
+    req.user = null;
+    return next();
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded;
+  } catch (err) {
+    req.user = null;
+  }
+
+  next();
+};
+
+module.exports = { protect, allowRoles, enforceStoreIsolation, optionalAuth };
