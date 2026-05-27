@@ -14,7 +14,8 @@ const userSchema = new mongoose.Schema(
     password: {
       type: String,
       required: false,
-      minlength: 8,
+      // ✅ Minimum 8 characters enforced
+      minlength: [8, "Password must be at least 8 characters"],
       select: false,
     },
     role: {
@@ -39,16 +40,18 @@ const userSchema = new mongoose.Schema(
     facebookId: { type: String, default: null },
     otp: { type: String, default: null },
     otpExpiry: { type: Date, default: null },
+
+    // ✅ OTP attempt tracking — prevents brute force
+    otpAttempts: { type: Number, default: 0 },
+    otpLockedUntil: { type: Date, default: null },
+
     referralCode: { type: String, default: null, unique: true, sparse: true },
     referredBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       default: null,
     },
-
-    // ─── WALLET ───────────────────────────────────────────────────────
     wallet: { type: Number, default: 0 },
-
     debt: { type: Number, default: 0 },
     storeId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -60,13 +63,11 @@ const userSchema = new mongoose.Schema(
       enum: ["MEN", "WOMEN", null],
       default: null,
     },
-    dateOfBirth: { type: Date },
-    gender: { type: String, enum: ["male", "female", "other"] },
-    address: { type: String },
+    dateOfBirth: { type: Date, default: null },
+    gender: { type: String, enum: ["male", "female", "other", null], default: null },
+    address: { type: String, default: null },
     avatar: { type: String, default: null },
     language: { type: String, default: "en" },
-
-    // ─── LOYALTY ──────────────────────────────────────────────────────
     points: { type: Number, default: 0 },
     loyaltyTier: {
       type: String,
@@ -75,7 +76,6 @@ const userSchema = new mongoose.Schema(
     },
     visitCount: { type: Number, default: 0 },
     favorites: [{ type: mongoose.Schema.Types.ObjectId, ref: "Store" }],
-
     fcmToken: { type: String, default: null },
     location: {
       type: { type: String, enum: ["Point"], default: "Point" },
