@@ -28,7 +28,6 @@ const appointmentSchema = new mongoose.Schema(
       required: true,
     },
 
-    // ── Primary service (queue display & backward compat) ──────────────
     service: {
       name: { type: String, required: true },
       price: { type: Number, required: true },
@@ -36,19 +35,13 @@ const appointmentSchema = new mongoose.Schema(
       durationMax: Number,
     },
 
-    // ── Multi-service list ─────────────────────────────────────────────
-    services: {
-      type: [serviceItemSchema],
-      default: [],
-    },
-
-    // ── Computed total across all selected services ────────────────────
+    services: { type: [serviceItemSchema], default: [] },
     totalAmount: { type: Number, default: 0 },
 
     date: { type: String, required: true },
     time: { type: String, required: true },
 
-    // ✅ Removed PENDING — bookings are auto-confirmed if store is open
+    // ✅ Removed PENDING — auto CONFIRMED
     status: {
       type: String,
       enum: [
@@ -70,7 +63,11 @@ const appointmentSchema = new mongoose.Schema(
     },
     address: { type: String, default: null },
 
-    // ── Queue fields ───────────────────────────────────────────────────
+    // ✅ Walk-in fields
+    isWalkIn: { type: Boolean, default: false },
+    walkInClientName: { type: String, default: null },
+
+    // ── Queue ──────────────────────────────────────────────────────────
     queueNumber: { type: Number, default: null },
     estimatedStartTime: { type: Date, default: null },
     expiryTime: { type: Date, default: null },
@@ -79,25 +76,25 @@ const appointmentSchema = new mongoose.Schema(
     actualStartTime: { type: Date, default: null },
     actualEndTime: { type: Date, default: null },
 
-    // ── Expiry notification tracking ───────────────────────────────────
+    // ── Expiry warning tracking ────────────────────────────────────────
     expiryWarningsSent: {
       thirtyMin: { type: Boolean, default: false },
       tenMin: { type: Boolean, default: false },
     },
 
-    // ── Payment & Deposit ──────────────────────────────────────────────
+    // ── Payment ────────────────────────────────────────────────────────
     deposit: { type: Number, default: 0 },
     depositPaid: { type: Boolean, default: false },
     depositRefunded: { type: Boolean, default: false },
     paymentId: { type: String, default: null },
     isPaid: { type: Boolean, default: false },
+    // ✅ Updated payment method names
     paymentMethod: {
       type: String,
-      enum: ["CARD", "CASH", null],
+      enum: ["CARD", "PAY_AT_STORE", null],
       default: null,
     },
 
-    // ── Refund safety ──────────────────────────────────────────────────
     refundId: { type: String, default: null },
     refundedAt: { type: Date, default: null },
 
@@ -123,14 +120,12 @@ const appointmentSchema = new mongoose.Schema(
     ratedAt: { type: Date, default: null },
     ratingDeadline: { type: Date, default: null },
 
-    // ── Complaint ──────────────────────────────────────────────────────
     complaintId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Complaint",
       default: null,
     },
 
-    // ── Cancellation ───────────────────────────────────────────────────
     cancelledBy: {
       type: String,
       enum: ["CLIENT", "STORE", null],
