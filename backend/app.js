@@ -6,11 +6,9 @@ const { Server } = require("socket.io");
 const connectDB = require("./config/db");
 const path = require("path");
 
-// ─── APP SETUP ────────────────────────────────────────────────────────────────
 const app = express();
 const server = http.createServer(app);
 
-// ─── SOCKET.IO ────────────────────────────────────────────────────────────────
 const io = new Server(server, {
   cors: { origin: "*", methods: ["GET", "POST"] },
 });
@@ -20,11 +18,13 @@ app.set("io", io);
 io.on("connection", (socket) => {
   console.log(`🔌 Socket connected: ${socket.id}`);
 
+  // ✅ Client joins their own room for personal notifications
   socket.on("join", (userId) => {
     socket.join(userId);
     console.log(`👤 User ${userId} joined their room`);
   });
 
+  // ✅ Store joins store room for queue updates
   socket.on("joinStore", (storeId) => {
     socket.join(`store:${storeId}`);
     console.log(`🏪 Socket joined store room: ${storeId}`);
@@ -39,7 +39,6 @@ io.on("connection", (socket) => {
   });
 });
 
-// ─── MIDDLEWARE ───────────────────────────────────────────────────────────────
 app.use(cors({
   origin: "*",
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
@@ -49,13 +48,11 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ─── DATABASE ─────────────────────────────────────────────────────────────────
 connectDB();
 
-// ─── PORT ─────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 
-// ─── SWAGGER DOCS ─────────────────────────────────────────────────────────────
+// ─── SWAGGER ──────────────────────────────────────────────────────────────────
 try {
   const swaggerUi = require("swagger-ui-express");
   const swaggerPath = path.resolve(__dirname, "./swagger-output.json");
@@ -69,84 +66,42 @@ try {
   swaggerFile.schemes =
     process.env.NODE_ENV === "production" ? ["https"] : ["http"];
 
-  console.log("Swagger loaded from:", swaggerPath);
-
   app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerFile));
 } catch (e) {
-  console.log("Swagger not available yet — check swagger-output.json path");
+  console.log("Swagger not available yet");
 }
 
 // ─── BACKGROUND JOBS ──────────────────────────────────────────────────────────
-
-// Queue expiry: marks NORMAL bookings as EXPIRED after grace period
-// Runs every 60 seconds
 try {
   const { runQueueExpiryJob } = require("./services/queueExpiryJob");
-
-  setInterval(() => {
-    runQueueExpiryJob(io);
-  }, 60 * 1000);
+  setInterval(() => runQueueExpiryJob(io), 60 * 1000);
 } catch (e) {
-  console.log("Queue expiry job not available yet");
+  console.log("Queue expiry job not available");
 }
 
-// Suspension lift: auto-reactivates stores after suspension period ends
-// Runs every 5 minutes
 try {
   const { runSuspensionLiftJob } = require("./services/suspensionLiftJob");
-
-  setInterval(() => {
-    runSuspensionLiftJob();
-  }, 5 * 60 * 1000);
+  setInterval(() => runSuspensionLiftJob(), 5 * 60 * 1000);
 } catch (e) {
-  console.log("Suspension lift job not available yet");
+  console.log("Suspension lift job not available");
 }
 
 // ─── ROUTES ───────────────────────────────────────────────────────────────────
-
-// Auth & Users
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/users", require("./routes/userRoutes"));
-
-// Store & Discovery
 app.use("/api/store", require("./routes/storeRoutes"));
 app.use("/api/salons", require("./routes/storeRoutes"));
-
-// Operations
 app.use("/api/queue", require("./routes/queueRoutes"));
 app.use("/api/booking", require("./routes/bookingRoutes"));
 app.use("/api/bookings", require("./routes/bookingRoutes"));
-
-// Check-in
-try {
-  app.use("/api/checkin", require("./routes/checkInRoutes"));
-} catch (e) {
-  console.log("checkInRoutes not available yet");
-}
-
-// Notifications
-try {
-  app.use("/api/notifications", require("./routes/notificationRoutes"));
-} catch (e) {
-  console.log("notificationRoutes not available yet");
-}
-
-// Payments & Marketing
+app.use("/api/checkin", require("./routes/checkInRoutes"));
+app.use("/api/notifications", require("./routes/notificationRoutes"));
 app.use("/api/payment", require("./routes/paymentRoutes"));
 app.use("/api/payments", require("./routes/paymentRoutes"));
 app.use("/api/loyalty", require("./routes/loyaltyRoutes"));
-
-// Promotions — wrapped in try/catch: file may not be fully implemented yet
-try {
-  app.use("/api/promotion", require("./routes/promotionRoutes"));
-} catch (e) {
-  console.log("promotionRoutes not available yet");
-}
-
-// Complaints & Moderation
+app.use("/api/wallet", require("./routes/walletRoutes"));  // ✅ NEW
+app.use("/api/promotion", require("./routes/promotionRoutes"));
 app.use("/api/complaint", require("./routes/complaintRoutes"));
-
-// Admin & Analytics
 app.use("/api/analytics", require("./routes/analyticsRoutes"));
 app.use("/api/admin", require("./routes/adminRoutes"));
 
@@ -159,7 +114,7 @@ app.get("/", (req, res) => {
   });
 });
 
-// ─── 404 HANDLER ──────────────────────────────────────────────────────────────
+// ─── 404 ──────────────────────────────────────────────────────────────────────
 app.use((req, res) => {
   res.status(404).json({
     success: false,
@@ -170,21 +125,15 @@ app.use((req, res) => {
 // ─── GLOBAL ERROR HANDLER ─────────────────────────────────────────────────────
 app.use((err, req, res, next) => {
   console.error("Critical Error:", err.stack);
-
   res.status(500).json({
     success: false,
     message: "Internal server error",
-    error:
-      process.env.NODE_ENV === "development"
-        ? err.message
-        : undefined,
+    error: process.env.NODE_ENV === "development" ? err.message : undefined,
   });
 });
 
-// ─── START SERVER ─────────────────────────────────────────────────────────────
 server.listen(PORT, () => {
   console.log(`🚀 TurnUP server running on port ${PORT}`);
 });
 
-// ─── EXPORT FOR RENDER ────────────────────────────────────────────────────────
 module.exports = app;
