@@ -1,5 +1,6 @@
 const Appointment = require("../models/appointmentModel");
 const Store = require("../models/storeModel");
+const User = require("../models/userModel");
 const { sendNotification } = require("../services/notificationServices");
 const { calculateLiveQueue } = require("../services/queueService");
 const { emitQueueUpdate, emitFullQueueRefresh } = require("../services/queueSocket");
@@ -9,13 +10,14 @@ exports.checkIn = async (req, res) => {
     const { storeId } = req.body;
     const clientId = req.user.id;
     const today = new Date().toISOString().split("T")[0];
+    const now = new Date();
 
-    // ── 1. Find client's active booking for today at this store ────────
+    // ── 1. Find active booking — both CONFIRMED online and walk-ins ────
     const appointment = await Appointment.findOne({
       storeId,
       client: clientId,
       date: today,
-      status: { $in: ["CONFIRMED"] },
+      status: "CONFIRMED",
     });
 
     if (!appointment) {
@@ -31,15 +33,14 @@ exports.checkIn = async (req, res) => {
       });
     }
 
-    // ── 3. Check booking has not expired ───────────────────────────────
-    const now = new Date();
+    // ── 3. Check booking not expired ──────────────────────────────────
     if (appointment.expiryTime && now > new Date(appointment.expiryTime)) {
       return res.status(400).json({
         message: "Your queue slot has expired. Please rebook.",
       });
     }
 
-    // ── 4. ✅ 30 min before and 30 min after window enforcement ────────
+    // ── 4. 30-min window: not before 30 mins, not after 30 mins ───────
     let referenceTime;
     if (appointment.bookingType === "NORMAL" && appointment.estimatedStartTime) {
       referenceTime = new Date(appointment.estimatedStartTime);
@@ -50,21 +51,17 @@ exports.checkIn = async (req, res) => {
     const minutesUntilSlot = (referenceTime - now) / (1000 * 60);
     const minutesSinceSlot = (now - referenceTime) / (1000 * 60);
 
-    // Too early — more than 30 mins before
     if (minutesUntilSlot > 30) {
       return res.status(400).json({
-        message: `Too early to check in. You can check in 30 minutes before your appointment.`,
+        message: `Too early to check in. You can check in 30 minutes before your slot.`,
         minutesUntilCheckIn: Math.round(minutesUntilSlot - 30),
       });
     }
 
-    // Too late — more than 30 mins after slot time
     if (minutesSinceSlot > 30) {
-      // ✅ Apply penalty for late check-in / no-show
       const store = await Store.findById(storeId).select("settings");
       const penalty = store?.settings?.noShowPenalty ?? 15;
 
-      const User = require("../models/userModel");
       await User.findByIdAndUpdate(clientId, { $inc: { debt: penalty } });
 
       appointment.status = "EXPIRED";
@@ -80,23 +77,22 @@ exports.checkIn = async (req, res) => {
       );
 
       return res.status(400).json({
-        message: `Check-in window has passed (30 minutes after your slot). A penalty of ${penalty} EGP has been applied.`,
+        message: `Check-in window passed. A penalty of ${penalty} EGP has been applied.`,
         penalty,
       });
     }
 
-    // ── 5. Update booking to CHECKED_IN ────────────────────────────────
+    // ── 5. Mark as CHECKED_IN ──────────────────────────────────────────
     appointment.checkedIn = true;
     appointment.checkInTime = now;
     appointment.status = "CHECKED_IN";
     await appointment.save();
 
-    // ── 6. Get store details ───────────────────────────────────────────
     const store = await Store.findById(storeId).select(
       "owner storeName receptionists"
     );
 
-    // ── 7. Recalculate and emit queue ──────────────────────────────────
+    // ── 6. Recalculate queue and emit to store dashboard ───────────────
     const io = req.app.get("io");
     const queueData = await calculateLiveQueue(storeId, today);
     emitFullQueueRefresh(io, storeId, queueData);
@@ -108,28 +104,36 @@ exports.checkIn = async (req, res) => {
       checkInTime: appointment.checkInTime,
     });
 
-    // ── 8. Notify client ───────────────────────────────────────────────
+    // ── 7. Also emit to client's personal room ─────────────────────────
+    if (io) {
+      io.to(String(clientId)).emit("checkInConfirmed", {
+        queueNumber: appointment.queueNumber,
+        estimatedStartTime: appointment.estimatedStartTime,
+        expiryTime: appointment.expiryTime,
+        storeName: store.storeName,
+      });
+    }
+
+    // ── 8. Notifications ───────────────────────────────────────────────
     await sendNotification(
       clientId,
       "BOOKING_CONFIRMED",
-      `You have successfully checked in at ${store.storeName}. Queue #${appointment.queueNumber}.`,
+      `Checked in at ${store.storeName}. Queue #${appointment.queueNumber}.`,
       "Check-In Confirmed",
       appointment._id,
       "APPOINTMENT"
     );
 
-    // ── 9. Notify store owner ──────────────────────────────────────────
     await sendNotification(
       store.owner,
       "CLIENT_CHECKED_IN",
-      `A client has checked in. Queue #${appointment.queueNumber}.`,
+      `Client checked in. Queue #${appointment.queueNumber}.`,
       "Client Checked In",
       appointment._id,
       "APPOINTMENT"
     );
 
-    // ── 10. Notify all receptionists ───────────────────────────────────
-    if (store.receptionists && store.receptionists.length > 0) {
+    if (store.receptionists?.length > 0) {
       for (const receptionistId of store.receptionists) {
         await sendNotification(
           receptionistId,
@@ -149,6 +153,110 @@ exports.checkIn = async (req, res) => {
       expiryTime: appointment.expiryTime,
       checkInTime: appointment.checkInTime,
       status: appointment.status,
+      // ✅ Returns full live queue so client sees their position
+      liveQueue: {
+        totalInQueue: queueData.pendingEntries.length,
+        totalWaitTime: queueData.totalWaitTime,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+// ─── ADD WALK-IN (RECEPTIONIST) ───────────────────────────────────────────────
+// Receptionist manually adds a walk-in client to the queue
+// Walk-in gets a queue number same as online bookings
+// They can then scan QR to confirm arrival
+exports.addWalkIn = async (req, res) => {
+  try {
+    const { clientName, serviceId, stylistId } = req.body;
+    const storeId = req.user.storeId;
+    const today = new Date().toISOString().split("T")[0];
+    const now = new Date();
+
+    const store = await Store.findById(storeId);
+    if (!store)
+      return res.status(404).json({ message: "Store not found." });
+
+    if (!store.isOpen)
+      return res.status(403).json({ message: "Store is closed." });
+
+    // ✅ Find the service details
+    const service = store.services.id(serviceId);
+    if (!service)
+      return res.status(404).json({ message: "Service not found." });
+
+    // ✅ Validate stylist
+    const stylistInStore = store.stylists.some(
+      (s) => String(s) === String(stylistId)
+    );
+    if (!stylistInStore)
+      return res.status(400).json({ message: "Stylist not found in store." });
+
+    const expiryMinutes = store.settings?.queueExpiryMinutes ?? 30;
+
+    const { assignQueueSlot } = require("../services/queueService");
+    const timeStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+
+    const slot = await assignQueueSlot(storeId, today, timeStr, expiryMinutes);
+
+    // ✅ Create walk-in appointment
+    // Walk-in client is added without a userId (anonymous) or with clientName
+    const newAppointment = new Appointment({
+      storeId,
+      client: req.user.id, // receptionist's userId as placeholder
+      stylist: stylistId,
+      service: {
+        name: service.name,
+        price: service.price,
+        durationMin: service.durationMin,
+        durationMax: service.durationMax,
+      },
+      services: [
+        {
+          name: service.name,
+          price: service.price,
+          durationMin: service.durationMin,
+          durationMax: service.durationMax,
+        },
+      ],
+      totalAmount: service.price,
+      date: today,
+      time: timeStr,
+      status: "CONFIRMED",
+      bookingType: "NORMAL",
+      queueNumber: slot.queueNumber,
+      estimatedStartTime: slot.estimatedStartTime,
+      expiryTime: slot.expiryTime,
+      checkedIn: true,       // ✅ Walk-ins are auto checked-in
+      checkInTime: now,
+      paymentMethod: null,
+      isPaid: false,
+      isWalkIn: true,
+      walkInClientName: clientName || "Walk-in",
+    });
+
+    await newAppointment.save();
+
+    // ✅ Emit queue update
+    const io = req.app.get("io");
+    const { calculateLiveQueue } = require("../services/queueService");
+    const { emitFullQueueRefresh, emitQueueUpdate } = require("../services/queueSocket");
+
+    const queueData = await calculateLiveQueue(storeId, today);
+    emitFullQueueRefresh(io, storeId, queueData);
+    emitQueueUpdate(io, storeId, "queueChanged", {
+      type: "WALK_IN_ADDED",
+      queueNumber: slot.queueNumber,
+    });
+
+    return res.status(201).json({
+      message: "Walk-in added to queue.",
+      queueNumber: slot.queueNumber,
+      estimatedStartTime: slot.estimatedStartTime,
+      expiryTime: slot.expiryTime,
+      appointment: newAppointment,
     });
   } catch (err) {
     return res.status(500).json({ message: err.message });
