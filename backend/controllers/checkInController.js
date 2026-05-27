@@ -4,9 +4,6 @@ const { sendNotification } = require("../services/notificationServices");
 const { calculateLiveQueue } = require("../services/queueService");
 const { emitQueueUpdate, emitFullQueueRefresh } = require("../services/queueSocket");
 
-// ─── QR CHECK-IN ──────────────────────────────────────────────────────────────
-// Called when client scans the store QR code
-// QR contains storeId — system matches it to client's active booking
 exports.checkIn = async (req, res) => {
   try {
     const { storeId } = req.body;
@@ -18,7 +15,7 @@ exports.checkIn = async (req, res) => {
       storeId,
       client: clientId,
       date: today,
-      status: { $in: ["PENDING", "CONFIRMED"] },
+      status: { $in: ["CONFIRMED"] },
     });
 
     if (!appointment) {
@@ -42,9 +39,7 @@ exports.checkIn = async (req, res) => {
       });
     }
 
-    // ── 4. Validate check-in time window ──────────────────────────────
-    // NORMAL bookings use estimatedStartTime
-    // HOME / EVENT use scheduled date + time
+    // ── 4. ✅ 30 min before and 30 min after window enforcement ────────
     let referenceTime;
     if (appointment.bookingType === "NORMAL" && appointment.estimatedStartTime) {
       referenceTime = new Date(appointment.estimatedStartTime);
@@ -53,11 +48,40 @@ exports.checkIn = async (req, res) => {
     }
 
     const minutesUntilSlot = (referenceTime - now) / (1000 * 60);
+    const minutesSinceSlot = (now - referenceTime) / (1000 * 60);
 
+    // Too early — more than 30 mins before
     if (minutesUntilSlot > 30) {
       return res.status(400).json({
-        message: "Too early to check in. Please arrive closer to your appointment time.",
-        minutesUntilSlot: Math.round(minutesUntilSlot),
+        message: `Too early to check in. You can check in 30 minutes before your appointment.`,
+        minutesUntilCheckIn: Math.round(minutesUntilSlot - 30),
+      });
+    }
+
+    // Too late — more than 30 mins after slot time
+    if (minutesSinceSlot > 30) {
+      // ✅ Apply penalty for late check-in / no-show
+      const store = await Store.findById(storeId).select("settings");
+      const penalty = store?.settings?.noShowPenalty ?? 15;
+
+      const User = require("../models/userModel");
+      await User.findByIdAndUpdate(clientId, { $inc: { debt: penalty } });
+
+      appointment.status = "EXPIRED";
+      await appointment.save();
+
+      await sendNotification(
+        clientId,
+        "PENALTY_APPLIED",
+        `You missed your check-in window. A penalty of ${penalty} EGP has been applied.`,
+        "Check-In Window Missed",
+        appointment._id,
+        "APPOINTMENT"
+      );
+
+      return res.status(400).json({
+        message: `Check-in window has passed (30 minutes after your slot). A penalty of ${penalty} EGP has been applied.`,
+        penalty,
       });
     }
 
@@ -72,12 +96,11 @@ exports.checkIn = async (req, res) => {
       "owner storeName receptionists"
     );
 
-    // ── 7. Recalculate full queue and emit to store dashboard ──────────
+    // ── 7. Recalculate and emit queue ──────────────────────────────────
     const io = req.app.get("io");
     const queueData = await calculateLiveQueue(storeId, today);
     emitFullQueueRefresh(io, storeId, queueData);
 
-    // Also emit lightweight check-in event for quick UI indicator
     emitQueueUpdate(io, storeId, "queueChanged", {
       type: "CLIENT_CHECKED_IN",
       queueNumber: appointment.queueNumber,
@@ -85,7 +108,7 @@ exports.checkIn = async (req, res) => {
       checkInTime: appointment.checkInTime,
     });
 
-    // ── 8. Notify client — check-in confirmed ──────────────────────────
+    // ── 8. Notify client ───────────────────────────────────────────────
     await sendNotification(
       clientId,
       "BOOKING_CONFIRMED",
@@ -95,7 +118,7 @@ exports.checkIn = async (req, res) => {
       "APPOINTMENT"
     );
 
-    // ── 9. Notify store owner — client checked in ──────────────────────
+    // ── 9. Notify store owner ──────────────────────────────────────────
     await sendNotification(
       store.owner,
       "CLIENT_CHECKED_IN",
@@ -105,7 +128,7 @@ exports.checkIn = async (req, res) => {
       "APPOINTMENT"
     );
 
-    // ── 10. Notify all receptionists — client checked in ───────────────
+    // ── 10. Notify all receptionists ───────────────────────────────────
     if (store.receptionists && store.receptionists.length > 0) {
       for (const receptionistId of store.receptionists) {
         await sendNotification(
@@ -122,6 +145,8 @@ exports.checkIn = async (req, res) => {
     return res.status(200).json({
       message: "Check-in successful.",
       queueNumber: appointment.queueNumber,
+      estimatedStartTime: appointment.estimatedStartTime,
+      expiryTime: appointment.expiryTime,
       checkInTime: appointment.checkInTime,
       status: appointment.status,
     });
