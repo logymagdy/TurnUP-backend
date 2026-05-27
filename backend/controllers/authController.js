@@ -2,15 +2,16 @@ const User = require("../models/userModel");
 const jwt = require("jsonwebtoken");
 const twilio = require("twilio");
 const { generateReferralCode } = require("../utils/generateReferralCode");
-const { TransactionalEmailsApi, SendSmtpEmail } = require("@getbrevo/brevo");
+const { BrevoClient } = require("@getbrevo/brevo");
 
 const BUSINESS_ROLES = ["serviceProvider", "RECEPTIONIST", "STYLIST"];
 const CLIENT_ROLES = ["CLIENT"];
 const ALL_ALLOWED_ROLES = [...BUSINESS_ROLES, ...CLIENT_ROLES];
 
 // ─── BREVO EMAIL CLIENT ────────────────────────────────────────────────────────
-const brevoClient = new TransactionalEmailsApi();
-brevoClient.authentications["api-key"].apiKey = process.env.BREVO_API_KEY;
+const brevoClient = new BrevoClient({
+  apiKey: process.env.BREVO_API_KEY,
+});
 
 // ─── TWILIO CLIENT ─────────────────────────────────────────────────────────────
 let twilioClient = null;
@@ -69,16 +70,15 @@ const sendOtp = async (user) => {
 
   if (user.email) {
     try {
-      const sendSmtpEmail = new SendSmtpEmail();
-      sendSmtpEmail.subject = "TurnUP — Your Verification Code";
-      sendSmtpEmail.htmlContent = otpEmailTemplate(otp);
-      sendSmtpEmail.sender = {
-        name: process.env.EMAIL_FROM_NAME || "TurnUP",
-        email: process.env.EMAIL_FROM || "logymagdy8@gmail.com",
-      };
-      sendSmtpEmail.to = [{ email: user.email }];
-
-      await brevoClient.sendTransacEmail(sendSmtpEmail);
+      await brevoClient.transactionalEmails.sendTransacEmail({
+        subject: "TurnUP — Your Verification Code",
+        htmlContent: otpEmailTemplate(otp),
+        sender: {
+          name: process.env.EMAIL_FROM_NAME || "TurnUP",
+          email: process.env.EMAIL_FROM || "logymagdy8@gmail.com",
+        },
+        to: [{ email: user.email }],
+      });
       console.log(`✅ OTP sent to ${user.email}`);
     } catch (emailErr) {
       console.error(`❌ Brevo failed for ${user.email}:`, emailErr.message);
@@ -527,7 +527,6 @@ exports.verifyOtp = async (req, res, next) => {
     if (!user)
       return res.status(404).json({ message: "No account found" });
 
-    // ✅ Check if locked
     if (user.otpLockedUntil && user.otpLockedUntil > Date.now()) {
       const minutesLeft = Math.ceil(
         (user.otpLockedUntil - Date.now()) / (1000 * 60)
@@ -537,7 +536,6 @@ exports.verifyOtp = async (req, res, next) => {
       });
     }
 
-    // ✅ Check OTP validity
     if (!user.otp || user.otp !== otp || user.otpExpiry < Date.now()) {
       user.otpAttempts = (user.otpAttempts || 0) + 1;
 
@@ -557,7 +555,6 @@ exports.verifyOtp = async (req, res, next) => {
       });
     }
 
-    // ✅ OTP correct — reset
     user.otpAttempts = 0;
     user.otpLockedUntil = null;
     await user.save();
