@@ -1,14 +1,39 @@
 const User = require("../models/userModel");
+const Appointment = require("../models/appointmentModel");
+const WalletTransaction = require("../models/walletTransactionModel");
 const { success, error } = require("../utils/responseHandler");
 
-// ─── GET POINTS HISTORY ───────────────────────────────────────────────────────
+// ─── GET POINTS & HISTORY ─────────────────────────────────────────────────────
 exports.getPointsHistory = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select("points");
+    const user = await User.findById(req.user.id).select(
+      "points loyaltyTier visitCount"
+    );
     if (!user) return res.status(404).json({ message: "User not found" });
+
+    // ✅ Get earning history from completed appointments
+    const earnedHistory = await Appointment.find({
+      client: req.user.id,
+      status: "DONE",
+      rating: { $exists: true },
+    })
+      .select("totalAmount date storeId")
+      .populate("storeId", "storeName logo")
+      .sort({ createdAt: -1 })
+      .limit(20);
+
+    const history = earnedHistory.map((a) => ({
+      type: "EARNED",
+      points: Math.floor(a.totalAmount || 0),
+      date: a.date,
+      store: a.storeId,
+    }));
 
     return success(res, "Loyalty data retrieved", {
       points: user.points,
+      loyaltyTier: user.loyaltyTier,
+      visitCount: user.visitCount,
+      history,
     });
   } catch (err) {
     return error(res, "Failed to get loyalty data", 500);
@@ -16,20 +41,48 @@ exports.getPointsHistory = async (req, res) => {
 };
 
 // ─── GET AVAILABLE REWARDS ────────────────────────────────────────────────────
+// ✅ Rewards are store-based promotions — redeemable with points
 exports.getAvailableRewards = async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("points");
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    const rewards = [
-      { id: 1, name: "10 EGP Discount", pointsRequired: 10 },
-      { id: 2, name: "25 EGP Discount", pointsRequired: 25 },
-      { id: 3, name: "50 EGP Discount", pointsRequired: 50 },
-    ];
+    const Promotion = require("../models/promotionModel");
+    const now = new Date();
 
-    const available = rewards.filter((r) => user.points >= r.pointsRequired);
+    // Get all active promotions
+    const promotions = await Promotion.find({
+      isActive: true,
+      startDate: { $lte: now },
+      endDate: { $gte: now },
+    }).populate("storeId", "storeName logo location");
 
-    return success(res, "Rewards retrieved", { points: user.points, available });
+    // ✅ Map promotions to reward cards with points required
+    // Points required = discountPercentage * 10 (e.g. 20% off = 200 pts)
+    const rewards = promotions
+      .filter((p) => p.storeId) // only valid stores
+      .map((p) => ({
+        rewardId: p._id,
+        storeId: p.storeId._id,
+        storeName: p.storeId.storeName,
+        storeLogo: p.storeId.logo,
+        storeLocation: p.storeId.location,
+        discountPercentage: p.discountPercentage,
+        description: p.description,
+        services: p.services,
+        pointsRequired: p.discountPercentage * 10,
+        pointsLeft: Math.max(
+          0,
+          p.discountPercentage * 10 - user.points
+        ),
+        isUnlocked: user.points >= p.discountPercentage * 10,
+        endDate: p.endDate,
+      }));
+
+    return success(res, "Rewards retrieved", {
+      points: user.points,
+      rewards,
+    });
   } catch (err) {
     return error(res, "Failed to get rewards", 500);
   }
