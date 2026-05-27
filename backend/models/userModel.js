@@ -3,7 +3,6 @@ const bcrypt = require("bcryptjs");
 
 const userSchema = new mongoose.Schema(
   {
-    // ─── USERNAME IS NOW OPTIONAL ───
     username: { type: String, required: false, trim: true },
     email: {
       type: String,
@@ -27,7 +26,8 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: false,
       trim: true,
-      match: [/^01[0-2,5]{1}[0-9]{8}$/, "Please enter a valid Egyptian phone number"],
+      unique: true,
+      sparse: true,
     },
     socialProvider: {
       type: String,
@@ -39,20 +39,43 @@ const userSchema = new mongoose.Schema(
     facebookId: { type: String, default: null },
     otp: { type: String, default: null },
     otpExpiry: { type: Date, default: null },
-    resetPasswordOtp: { type: String, default: null },
-    resetPasswordExpires: { type: Date, default: null },
     referralCode: { type: String, default: null, unique: true, sparse: true },
-    referredBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    referredBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    // ─── WALLET ───────────────────────────────────────────────────────
     wallet: { type: Number, default: 0 },
+
     debt: { type: Number, default: 0 },
-    storeId: { type: mongoose.Schema.Types.ObjectId, ref: "Store", default: null },
-    servicePreference: { type: String, enum: ["MEN", "WOMEN", null], default: null },
+    storeId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Store",
+      default: null,
+    },
+    servicePreference: {
+      type: String,
+      enum: ["MEN", "WOMEN", null],
+      default: null,
+    },
     dateOfBirth: { type: Date },
     gender: { type: String, enum: ["male", "female", "other"] },
     address: { type: String },
-    avatar: { type: String, default: "default-avatar.png" },
+    avatar: { type: String, default: null },
     language: { type: String, default: "en" },
+
+    // ─── LOYALTY ──────────────────────────────────────────────────────
     points: { type: Number, default: 0 },
+    loyaltyTier: {
+      type: String,
+      enum: ["BRONZE", "SILVER", "GOLD"],
+      default: "BRONZE",
+    },
+    visitCount: { type: Number, default: 0 },
+    favorites: [{ type: mongoose.Schema.Types.ObjectId, ref: "Store" }],
+
     fcmToken: { type: String, default: null },
     location: {
       type: { type: String, enum: ["Point"], default: "Point" },
@@ -79,10 +102,7 @@ const userSchema = new mongoose.Schema(
 userSchema.index({ location: "2dsphere" });
 
 userSchema.pre("save", async function () {
-  if (!this.isModified("password") || !this.password) {
-    return;
-  }
-
+  if (!this.isModified("password") || !this.password) return;
   try {
     const salt = await bcrypt.genSalt(12);
     this.password = await bcrypt.hash(this.password, salt);
