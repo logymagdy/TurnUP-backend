@@ -52,8 +52,7 @@ const otpEmailTemplate = (otp) => `
     <div style="background:#0f0f0f;border:2px solid #6C3EF0;border-radius:12px;padding:24px;text-align:center;margin:0 0 24px 0;">
       <span style="color:#6C3EF0;font-size:48px;font-weight:bold;letter-spacing:16px;">${otp}</span>
     </div>
-    <p style="color:#aaa;font-size:14px;margin:0 0 8px 0;">⏰ Expires in <strong style="color:#fff;">10 minutes</strong>.</p>
-    <p style="color:#555;font-size:12px;margin:0;">If you didn't request this, ignore this email.</p>
+<p style="color:#aaa;font-size:14px;margin:0 0 8px 0;">⏰ Expires in <strong style="color:#fff;">5 minutes</strong>.</p>    <p style="color:#555;font-size:12px;margin:0;">If you didn't request this, ignore this email.</p>
   </div>
 </body>
 </html>
@@ -62,8 +61,7 @@ const otpEmailTemplate = (otp) => `
 // ─── SEND OTP HELPER ──────────────────────────────────────────────────────────
 const sendOtp = async (user) => {
   const otp = generateOtp();
-  const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
-
+const otpExpiry = new Date(Date.now() + 5 * 60 * 1000);
   user.otp = otp;
   user.otpExpiry = otpExpiry;
   await user.save();
