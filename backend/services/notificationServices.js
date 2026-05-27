@@ -29,7 +29,7 @@ const sendNotification = async (
   extraData = {}
 ) => {
   try {
-    // ── 1. Always save to DB — in-app notification ─────────────────────
+    // ✅ Always save to DB for in-app notifications
     await Notification.create({
       userId,
       type,
@@ -39,36 +39,34 @@ const sendNotification = async (
       referenceType,
     });
 
-    // ── 2. Get user FCM token and settings ─────────────────────────────
     const user = await User.findById(userId).select(
-      "fcmToken notificationSettings username"
+      "fcmToken notificationSettings"
     );
     if (!user || !user.fcmToken) return;
+    if (!user.notificationSettings?.general) return;
 
-    // ── 3. Check notification settings ────────────────────────────────
+    // ✅ Respect notification type settings
     const settings = user.notificationSettings;
-    if (!settings?.general) return;
-
-    // ✅ Check specific notification type settings
     const typeSettingMap = {
       PROMOTION: settings.specialOffers,
+      SPECIAL_OFFER: settings.specialOffers,
       BOOKING_CONFIRMED: settings.booking?.newBooking,
       BOOKING_CANCELLED: settings.booking?.cancellation,
       PENALTY_APPLIED: settings.payments,
       SERVICE_DONE: settings.booking?.newBooking,
       SUBSCRIPTION_DUE: settings.payments,
+      NEW_SERVICE_AVAILABLE: settings.newServiceAvailable,
+      APP_UPDATE: settings.appUpdates,
     };
 
     if (typeSettingMap[type] === false) return;
 
-    // ── 4. Build FCM payload ───────────────────────────────────────────
     const fcmPayload = {
       token: user.fcmToken,
       notification: {
         title,
         body: message,
       },
-      // ✅ data field — used by frontend for in-app handling
       data: {
         type,
         referenceId: referenceId ? String(referenceId) : "",
@@ -85,8 +83,6 @@ const sendNotification = async (
           sound: settings.sound ? "default" : null,
           channelId: "turnup_notifications",
           priority: "high",
-          defaultSound: true,
-          defaultVibrateTimings: settings.vibrate || false,
         },
       },
       apns: {
@@ -97,18 +93,15 @@ const sendNotification = async (
             "content-available": 1,
           },
         },
-        headers: {
-          "apns-priority": "10",
-        },
+        headers: { "apns-priority": "10" },
       },
     };
 
-    // ── 5. Send push — failure never throws ───────────────────────────
     try {
       await admin.messaging().send(fcmPayload);
     } catch (pushErr) {
       console.error(`FCM push failed for user ${userId}:`, pushErr.message);
-      // ✅ If token invalid, clear it so we don't keep trying
+      // ✅ Clear invalid tokens automatically
       if (
         pushErr.code === "messaging/invalid-registration-token" ||
         pushErr.code === "messaging/registration-token-not-registered"
@@ -121,8 +114,8 @@ const sendNotification = async (
   }
 };
 
-// ─── SEND QUEUE POSITION NOTIFICATION ────────────────────────────────────────
-// ✅ Special notification for queue updates — includes countdown data
+// ─── SEND QUEUE NOTIFICATION ──────────────────────────────────────────────────
+// ✅ Special notification for queue updates with countdown data
 const sendQueueNotification = async (
   userId,
   queueNumber,
@@ -130,7 +123,7 @@ const sendQueueNotification = async (
   expiryTime,
   storeName,
   appointmentId,
-  messageType // "YOURE_NEXT" | "TEN_MINS_LEFT" | "THIRTY_MINS_LEFT"
+  messageType
 ) => {
   const now = new Date();
   const minutesLeft = estimatedStartTime
@@ -161,7 +154,9 @@ const sendQueueNotification = async (
       estimatedStartTime: estimatedStartTime
         ? new Date(estimatedStartTime).toISOString()
         : "",
-      expiryTime: expiryTime ? new Date(expiryTime).toISOString() : "",
+      expiryTime: expiryTime
+        ? new Date(expiryTime).toISOString()
+        : "",
       minutesLeft: minutesLeft ? String(minutesLeft) : "",
       storeName,
     }
@@ -179,7 +174,6 @@ const sendBulkNotification = async (
   extraData = {}
 ) => {
   try {
-    // ── 1. Save all to DB ──────────────────────────────────────────────
     const notificationDocs = userIds.map((userId) => ({
       userId,
       type,
@@ -190,7 +184,6 @@ const sendBulkNotification = async (
     }));
     await Notification.insertMany(notificationDocs);
 
-    // ── 2. Get users with valid FCM tokens ─────────────────────────────
     const users = await User.find({
       _id: { $in: userIds },
       fcmToken: { $ne: null },
@@ -233,19 +226,13 @@ const sendBulkNotification = async (
         .messaging()
         .sendEachForMulticast(multicastMessage);
 
-      // ✅ Clean up invalid tokens
       const invalidTokenUsers = [];
       response.responses.forEach((r, i) => {
         if (!r.success) {
-          console.error(
-            `FCM bulk fail for token ${tokens[i]}:`,
-            r.error?.message
-          );
+          console.error(`FCM bulk fail for token ${tokens[i]}:`, r.error?.message);
           if (
-            r.error?.code ===
-              "messaging/invalid-registration-token" ||
-            r.error?.code ===
-              "messaging/registration-token-not-registered"
+            r.error?.code === "messaging/invalid-registration-token" ||
+            r.error?.code === "messaging/registration-token-not-registered"
           ) {
             invalidTokenUsers.push(users[i]._id);
           }
