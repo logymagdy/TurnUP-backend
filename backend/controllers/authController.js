@@ -10,10 +10,7 @@ const ALL_ALLOWED_ROLES = [...BUSINESS_ROLES, ...CLIENT_ROLES];
 
 // ─── BREVO EMAIL CLIENT ────────────────────────────────────────────────────────
 const brevoClient = new Brevo.TransactionalEmailsApi();
-brevoClient.setApiKey(
-  Brevo.TransactionalEmailsApiApiKeys.apiKey,
-  process.env.BREVO_API_KEY
-);
+brevoClient.authentications.apiKey.apiKey = process.env.BREVO_API_KEY;
 
 // ─── TWILIO CLIENT ─────────────────────────────────────────────────────────────
 let twilioClient = null;
@@ -72,14 +69,16 @@ const sendOtp = async (user) => {
 
   if (user.email) {
     try {
-      const sendSmtpEmail = new Brevo.SendSmtpEmail();
-      sendSmtpEmail.subject = "TurnUP — Your Verification Code";
-      sendSmtpEmail.htmlContent = otpEmailTemplate(otp);
-      sendSmtpEmail.sender = {
-        name: process.env.EMAIL_FROM_NAME || "TurnUP",
-        email: process.env.EMAIL_FROM || "logymagdy8@gmail.com",
+      // ✅ Fixed Brevo payload initialization structure
+      const sendSmtpEmail = {
+        subject: "TurnUP — Your Verification Code",
+        htmlContent: otpEmailTemplate(otp),
+        sender: {
+          name: process.env.EMAIL_FROM_NAME || "TurnUP",
+          email: process.env.EMAIL_FROM || "logymagdy8@gmail.com",
+        },
+        to: [{ email: user.email }],
       };
-      sendSmtpEmail.to = [{ email: user.email }];
 
       await brevoClient.sendTransacEmail(sendSmtpEmail);
       console.log(`✅ OTP sent to ${user.email}`);
