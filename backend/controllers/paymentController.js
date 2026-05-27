@@ -3,13 +3,14 @@ const axios = require("axios");
 const Appointment = require("../models/appointmentModel");
 const Payment = require("../models/paymentModel");
 const User = require("../models/userModel");
+const WalletTransaction = require("../models/walletTransactionModel");
 const { sendNotification } = require("../services/notificationServices");
+const { calculateCommission } = require("../utils/calculateCommission");
 
 const PAYMOB_API_KEY = process.env.PAYMOB_API_KEY;
 const PAYMOB_INTEGRATION_ID = process.env.PAYMOB_INTEGRATION_ID;
 const PAYMOB_HMAC_SECRET = process.env.PAYMOB_HMAC_SECRET;
 
-// ─── PAYMOB HTTP HELPER (with timeout) ───────────────────────────────────────
 const paymobPost = async (url, data) => {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
@@ -29,9 +30,7 @@ const paymobPost = async (url, data) => {
   }
 };
 
-// ─── STEP 1: INITIATE PAYMENT — returns payment_key for frontend ──────────────
-// Frontend uses payment_key to open Paymob iframe or SDK
-// CVV, card number, expiry NEVER touch this backend
+// ─── INITIATE CARD PAYMENT ────────────────────────────────────────────────────
 exports.initiatePayment = async (req, res) => {
   try {
     const { appointmentId } = req.body;
@@ -52,19 +51,19 @@ exports.initiatePayment = async (req, res) => {
     if (appointment.isPaid)
       return res.status(400).json({ message: "Appointment already paid." });
 
-    if (appointment.paymentMethod === "CASH")
-      return res.status(400).json({ message: "This appointment is set for cash payment at salon." });
+    if (appointment.paymentMethod === "PAY_AT_STORE")
+      return res.status(400).json({
+        message: "This appointment is set for payment at store.",
+      });
 
     const amountCents = Math.round(appointment.totalAmount * 100);
 
-    // ── 1. Authenticate with Paymob ───────────────────────────────────
     const authData = await paymobPost(
       "https://accept.paymob.com/api/auth/tokens",
       { api_key: PAYMOB_API_KEY }
     );
     const authToken = authData.token;
 
-    // ── 2. Create Paymob order ─────────────────────────────────────────
     const orderData = await paymobPost(
       "https://accept.paymob.com/api/ecommerce/orders",
       {
@@ -83,7 +82,6 @@ exports.initiatePayment = async (req, res) => {
     );
     const paymobOrderId = String(orderData.id);
 
-    // ── 3. Get payment key ─────────────────────────────────────────────
     const client = appointment.client;
     const paymentKeyData = await paymobPost(
       "https://accept.paymob.com/api/acceptance/payment_keys",
@@ -114,12 +112,20 @@ exports.initiatePayment = async (req, res) => {
     );
     const paymentKey = paymentKeyData.token;
 
-    // ── 4. Create pending Payment record — no card data stored ─────────
+    // ✅ Calculate commission before creating payment record
+    const user = await User.findById(req.user.id).select("visitCount");
+    const { adminCut, storeCut } = calculateCommission(
+      appointment.totalAmount,
+      user.visitCount || 0
+    );
+
     await Payment.create({
       client: appointment.client._id,
       storeId: appointment.storeId._id,
       appointmentId: appointment._id,
       amount: appointment.totalAmount,
+      adminCut,
+      storeCut,
       type: appointment.deposit > 0 ? "DEPOSIT" : "SERVICE",
       method: "CARD",
       status: "PENDING",
@@ -128,12 +134,11 @@ exports.initiatePayment = async (req, res) => {
       referenceType: "APPOINTMENT",
     });
 
-    // ── 5. Store paymobOrderId on appointment for webhook matching ─────
     appointment.paymentId = paymobOrderId;
     await appointment.save();
 
     return res.status(200).json({
-      message: "Payment initiated. Use payment_key in your frontend SDK.",
+      message: "Payment initiated.",
       payment_key: paymentKey,
       paymobOrderId,
       amountEGP: appointment.totalAmount,
@@ -143,41 +148,23 @@ exports.initiatePayment = async (req, res) => {
   }
 };
 
-// ─── STEP 2: PAYMOB WEBHOOK — called by Paymob after card is charged ──────────
-// Validates HMAC before trusting any event
-// This is the ONLY place isPaid and depositPaid are set to true
+// ─── PAYMOB WEBHOOK ───────────────────────────────────────────────────────────
 exports.paymobWebhook = async (req, res) => {
   try {
     const hmacSecret = PAYMOB_HMAC_SECRET;
     const receivedHmac = req.query.hmac;
 
     if (!hmacSecret || !receivedHmac) {
-      console.error("Webhook: missing HMAC config or header");
       return res.status(400).json({ message: "Invalid webhook." });
     }
 
-    // ── HMAC verification (Paymob concatenation spec) ──────────────────
     const obj = req.body?.obj || {};
     const hmacFields = [
-      obj.amount_cents,
-      obj.created_at,
-      obj.currency,
-      obj.error_occured,
-      obj.has_parent_transaction,
-      obj.id,
-      obj.integration_id,
-      obj.is_3d_secure,
-      obj.is_auth,
-      obj.is_capture,
-      obj.is_refunded,
-      obj.is_standalone_payment,
-      obj.is_voided,
-      obj.order?.id,
-      obj.owner,
-      obj.pending,
-      obj.source_data?.pan,
-      obj.source_data?.sub_type,
-      obj.source_data?.type,
+      obj.amount_cents, obj.created_at, obj.currency, obj.error_occured,
+      obj.has_parent_transaction, obj.id, obj.integration_id, obj.is_3d_secure,
+      obj.is_auth, obj.is_capture, obj.is_refunded, obj.is_standalone_payment,
+      obj.is_voided, obj.order?.id, obj.owner, obj.pending,
+      obj.source_data?.pan, obj.source_data?.sub_type, obj.source_data?.type,
       obj.success,
     ]
       .map((v) => (v === undefined || v === null ? "" : String(v)))
@@ -189,27 +176,21 @@ exports.paymobWebhook = async (req, res) => {
       .digest("hex");
 
     if (receivedHmac !== expectedHmac) {
-      console.error("Webhook: HMAC mismatch — possible spoofed request");
       return res.status(401).json({ message: "Unauthorized." });
     }
 
-    // ── Only process successful transactions ───────────────────────────
     if (obj.success !== true) {
-      console.log("Webhook: unsuccessful transaction, skipping.");
-      return res.status(200).json({ message: "Acknowledged — unsuccessful transaction." });
+      return res.status(200).json({ message: "Acknowledged — unsuccessful." });
     }
 
     const paymobOrderId = String(obj.order?.id);
     const paymobTransactionId = String(obj.id);
 
-    // ── Find and update Payment record ────────────────────────────────
     const payment = await Payment.findOne({ paymobOrderId });
     if (!payment) {
-      console.error(`Webhook: No Payment record for paymobOrderId ${paymobOrderId}`);
       return res.status(404).json({ message: "Payment record not found." });
     }
 
-    // Idempotency — skip if already completed
     if (payment.status === "COMPLETED") {
       return res.status(200).json({ message: "Already processed." });
     }
@@ -218,37 +199,49 @@ exports.paymobWebhook = async (req, res) => {
     payment.paymobTransactionId = paymobTransactionId;
     await payment.save();
 
-    // ── Find appointment and confirm payment ──────────────────────────
     const appointment = await Appointment.findById(payment.appointmentId);
     if (appointment) {
       appointment.isPaid = true;
       appointment.paymentMethod = "CARD";
-      if (appointment.deposit > 0) {
-        appointment.depositPaid = true;
-      }
+      if (appointment.deposit > 0) appointment.depositPaid = true;
       await appointment.save();
 
-      // Notify client — payment confirmed
+      // ✅ Increment visit count for commission calculation
+      await User.findByIdAndUpdate(appointment.client, {
+        $inc: { visitCount: 1 },
+      });
+
+      // ✅ Record wallet transaction for refund tracking
+      await WalletTransaction.create({
+        userId: appointment.client,
+        type: "DEBIT",
+        amount: payment.amount,
+        description: `Payment for appointment`,
+        referenceId: appointment._id,
+        referenceType: "APPOINTMENT",
+        balanceAfter: 0, // will be recalculated if needed
+      });
+
       await sendNotification(
         appointment.client,
         "BOOKING_CONFIRMED",
-        `Payment of ${payment.amount} EGP confirmed for your booking.`,
+        `Payment of ${payment.amount} EGP confirmed.`,
         "Payment Confirmed",
         appointment._id,
         "APPOINTMENT"
       );
     }
 
-    return res.status(200).json({ message: "Webhook processed successfully." });
+    return res.status(200).json({ message: "Webhook processed." });
   } catch (err) {
-    console.error("Webhook processing error:", err.message);
-    // Always return 200 to Paymob to prevent retries on our own errors
+    console.error("Webhook error:", err.message);
     return res.status(200).json({ message: "Acknowledged." });
   }
 };
 
-// ─── CASH PAYMENT — client chooses to pay at salon ───────────────────────────
-exports.confirmCashPayment = async (req, res) => {
+// ─── PAY AT STORE ─────────────────────────────────────────────────────────────
+// ✅ Renamed from confirmCashPayment to payAtStore
+exports.payAtStore = async (req, res) => {
   try {
     const { appointmentId } = req.body;
 
@@ -260,27 +253,34 @@ exports.confirmCashPayment = async (req, res) => {
       return res.status(403).json({ message: "Not authorized." });
 
     if (appointment.isPaid)
-      return res.status(400).json({ message: "Appointment already paid." });
+      return res.status(400).json({ message: "Already paid." });
 
-    appointment.paymentMethod = "CASH";
+    appointment.paymentMethod = "PAY_AT_STORE";
     await appointment.save();
 
-    // Record pending cash payment
+    const user = await User.findById(req.user.id).select("visitCount");
+    const { adminCut, storeCut } = calculateCommission(
+      appointment.totalAmount,
+      user.visitCount || 0
+    );
+
     await Payment.create({
       client: appointment.client,
       storeId: appointment.storeId,
       appointmentId: appointment._id,
       amount: appointment.totalAmount,
+      adminCut,
+      storeCut,
       type: "SERVICE",
-      method: "CASH",
+      method: "PAY_AT_STORE",
       status: "PENDING",
       referenceId: appointment._id,
       referenceType: "APPOINTMENT",
-      notes: "Cash payment — to be collected at salon",
+      notes: "Client will pay at store",
     });
 
     return res.status(200).json({
-      message: "Cash payment selected. Please pay at the salon.",
+      message: "Payment method set to Pay at Store.",
       appointmentId,
       amountDue: appointment.totalAmount,
     });
@@ -289,8 +289,8 @@ exports.confirmCashPayment = async (req, res) => {
   }
 };
 
-// ─── CONFIRM CASH COLLECTED (RECEPTIONIST) ────────────────────────────────────
-exports.confirmCashCollected = async (req, res) => {
+// ─── CONFIRM PAY AT STORE COLLECTED (RECEPTIONIST) ────────────────────────────
+exports.confirmPayAtStoreCollected = async (req, res) => {
   try {
     const { appointmentId } = req.params;
 
@@ -301,8 +301,8 @@ exports.confirmCashCollected = async (req, res) => {
     if (String(appointment.storeId) !== String(req.user.storeId))
       return res.status(403).json({ message: "Not authorized." });
 
-    if (appointment.paymentMethod !== "CASH")
-      return res.status(400).json({ message: "This appointment is not a cash payment." });
+    if (appointment.paymentMethod !== "PAY_AT_STORE")
+      return res.status(400).json({ message: "Not a pay-at-store appointment." });
 
     if (appointment.isPaid)
       return res.status(400).json({ message: "Already marked as paid." });
@@ -311,26 +311,38 @@ exports.confirmCashCollected = async (req, res) => {
     await appointment.save();
 
     await Payment.findOneAndUpdate(
-      { appointmentId: appointment._id, method: "CASH", status: "PENDING" },
+      {
+        appointmentId: appointment._id,
+        method: "PAY_AT_STORE",
+        status: "PENDING",
+      },
       { status: "COMPLETED" }
     );
+
+    // ✅ Increment visit count
+    await User.findByIdAndUpdate(appointment.client, {
+      $inc: { visitCount: 1 },
+    });
 
     await sendNotification(
       appointment.client,
       "BOOKING_CONFIRMED",
-      `Cash payment received for your appointment. Thank you!`,
+      `Payment received at store. Thank you!`,
       "Payment Received",
       appointment._id,
       "APPOINTMENT"
     );
 
-    return res.status(200).json({ message: "Cash payment confirmed.", appointmentId });
+    return res.status(200).json({
+      message: "Payment at store confirmed.",
+      appointmentId,
+    });
   } catch (err) {
     return res.status(500).json({ message: err.message });
   }
 };
 
-// ─── GET PAYMENT HISTORY (CLIENT) ────────────────────────────────────────────
+// ─── GET MY PAYMENTS ──────────────────────────────────────────────────────────
 exports.getMyPayments = async (req, res) => {
   try {
     const payments = await Payment.find({ client: req.user.id })
