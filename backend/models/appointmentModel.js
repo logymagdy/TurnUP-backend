@@ -70,6 +70,9 @@ const appointmentSchema = new mongoose.Schema(
     actualStartTime: { type: Date, default: null },
     actualEndTime: { type: Date, default: null },
 
+    // ✅ Tracks if "you're next" notification was sent
+    youreNextSent: { type: Boolean, default: false },
+
     expiryWarningsSent: {
       thirtyMin: { type: Boolean, default: false },
       tenMin: { type: Boolean, default: false },
