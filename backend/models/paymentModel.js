@@ -30,28 +30,29 @@ const paymentSchema = new mongoose.Schema(
       enum: ["SERVICE", "TIP", "DEPOSIT", "PENALTY", "SUBSCRIPTION", "REFUND"],
       required: true,
     },
+
+    // ✅ Updated — CASH replaced with PAY_AT_STORE
     method: {
       type: String,
-      enum: ["CARD", "CASH"],
+      enum: ["CARD", "PAY_AT_STORE"],
       required: true,
     },
+
     status: {
       type: String,
       enum: ["PENDING", "COMPLETED", "FAILED", "REFUNDED"],
       default: "PENDING",
     },
-    // ── Gateway fields (Paymob) ────────────────────────────────────────
+
+    // ── Paymob ────────────────────────────────────────────────────────
     paymobOrderId: { type: String, default: null },
     paymobTransactionId: { type: String, default: null },
 
-    // ── Refund audit ───────────────────────────────────────────────────
+    // ── Refund ────────────────────────────────────────────────────────
     refundedAmount: { type: Number, default: 0 },
     refundedAt: { type: Date, default: null },
 
-    referenceId: {
-      type: mongoose.Schema.Types.ObjectId,
-      default: null,
-    },
+    referenceId: { type: mongoose.Schema.Types.ObjectId, default: null },
     referenceType: {
       type: String,
       enum: ["QUEUE_ENTRY", "APPOINTMENT", null],
