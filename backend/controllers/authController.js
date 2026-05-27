@@ -4,7 +4,6 @@ const { Resend } = require("resend");
 const twilio = require("twilio");
 const { generateReferralCode } = require("../utils/generateReferralCode");
 
-// ─── ROLE DEFINITIONS ─────────────────────────────────────────────────────────
 const BUSINESS_ROLES = ["serviceProvider", "RECEPTIONIST", "STYLIST"];
 const CLIENT_ROLES = ["CLIENT"];
 const ALL_ALLOWED_ROLES = [...BUSINESS_ROLES, ...CLIENT_ROLES];
@@ -13,12 +12,15 @@ const ALL_ALLOWED_ROLES = [...BUSINESS_ROLES, ...CLIENT_ROLES];
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 // ─── TWILIO CLIENT ─────────────────────────────────────────────────────────────
-const twilioClient = twilio(
-  process.env.TWILIO_ACCOUNT_SID,
-  process.env.TWILIO_AUTH_TOKEN
-);
+let twilioClient = null;
+if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
+  twilioClient = twilio(
+    process.env.TWILIO_ACCOUNT_SID,
+    process.env.TWILIO_AUTH_TOKEN
+  );
+}
 
-// ─── HELPERS ──────────────────────────────────────────────────────────────────
+// ─── TOKEN HELPERS ────────────────────────────────────────────────────────────
 const generateToken = (id, role, storeId) => {
   return jwt.sign({ id, role, storeId }, process.env.JWT_SECRET, {
     expiresIn: "15m",
@@ -34,13 +36,16 @@ const generateRefreshToken = (id) => {
 const generateOtp = () =>
   Math.floor(100000 + Math.random() * 900000).toString();
 
+// ─── OTP EMAIL TEMPLATE ────────────────────────────────────────────────────────
 const otpEmailTemplate = (otp) => `
-  <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 20px;">
-    <h2 style="color: #6C3EF0;">TurnUP Password Reset</h2>
-    <p>Your OTP code is:</p>
-    <h1 style="color: #6C3EF0; letter-spacing: 10px;">${otp}</h1>
-    <p>Expires in <strong>10 minutes</strong>.</p>
-    <p style="color: #999; font-size: 12px;">If you didn't request this, ignore this email.</p>
+  <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background: #0f0f0f; color: #fff; border-radius: 12px;">
+    <h2 style="color: #6C3EF0; margin-bottom: 8px;">TurnUP</h2>
+    <p style="color: #ccc;">Your verification code is:</p>
+    <div style="background: #1a1a1a; border-radius: 8px; padding: 20px; text-align: center; margin: 20px 0;">
+      <h1 style="color: #6C3EF0; font-size: 40px; letter-spacing: 16px; margin: 0;">${otp}</h1>
+    </div>
+    <p style="color: #ccc;">This code expires in <strong>10 minutes</strong>.</p>
+    <p style="color: #666; font-size: 12px;">If you didn't request this, please ignore this email.</p>
   </div>
 `;
 
@@ -54,16 +59,33 @@ const sendOtp = async (user) => {
   await user.save();
 
   if (user.email) {
-    await resend.emails.send({
-      from: "TurnUP <onboarding@resend.dev>",
-      to: user.email,
-      subject: "TurnUP — Password Reset OTP",
-      html: otpEmailTemplate(otp),
-    });
-  } else if (user.phone) {
-    await twilioClient.verify.v2
-      .services(process.env.TWILIO_VERIFY_SERVICE_SID)
-      .verifications.create({ to: user.phone, channel: "sms" });
+    // ✅ Resend — works on Render, sends to ANY email address
+    // Must use your verified domain in FROM field
+    // If domain not verified yet, use: delivered@resend.dev for testing
+    const fromEmail = process.env.RESEND_FROM_EMAIL || "TurnUP <onboarding@resend.dev>";
+
+    try {
+      const result = await resend.emails.send({
+        from: fromEmail,
+        to: [user.email], // ✅ sends to the actual user's email
+        subject: "TurnUP — Your Verification Code",
+        html: otpEmailTemplate(otp),
+      });
+      console.log(`✅ OTP email sent to ${user.email}:`, result);
+    } catch (emailErr) {
+      console.error(`❌ Resend failed for ${user.email}:`, emailErr.message);
+      throw new Error("Failed to send OTP email. Please try again.");
+    }
+  } else if (user.phone && twilioClient) {
+    try {
+      await twilioClient.verify.v2
+        .services(process.env.TWILIO_VERIFY_SERVICE_SID)
+        .verifications.create({ to: user.phone, channel: "sms" });
+      console.log(`✅ OTP SMS sent to ${user.phone}`);
+    } catch (smsErr) {
+      console.error(`❌ Twilio failed for ${user.phone}:`, smsErr.message);
+      throw new Error("Failed to send OTP SMS. Please try again.");
+    }
   }
 
   return otp;
@@ -78,7 +100,7 @@ exports.registerUser = async (req, res, next) => {
       password,
       role,
       phone,
-      servicePreference, // ✅ MEN or WOMEN — chosen on onboarding screen 2
+      servicePreference,
       referralCode: incomingReferralCode,
     } = req.body;
 
@@ -91,7 +113,7 @@ exports.registerUser = async (req, res, next) => {
       });
 
     if (!email && !phone)
-      return res.status(400).json({ message: "Email or phone number is required" });
+      return res.status(400).json({ message: "Email or phone is required" });
 
     const orConditions = [];
     if (email) orConditions.push({ email: email.toLowerCase().trim() });
@@ -125,8 +147,7 @@ exports.registerUser = async (req, res, next) => {
       password,
       phone: phone ? phone.trim() : null,
       role,
-      // ✅ Only set for CLIENT — chosen on screen 2 (MEN/WOMEN)
-      servicePreference: isClientTrack ? (servicePreference || null) : null,
+      servicePreference: isClientTrack ? servicePreference || null : null,
       referralCode: isClientTrack ? newReferralCode : null,
       referredBy: isClientTrack ? referredBy : null,
       storeId: null,
@@ -142,9 +163,10 @@ exports.registerUser = async (req, res, next) => {
       token,
       refreshToken,
       userId: newUser._id,
+      username: newUser.username,
       role: newUser.role,
       track: isClientTrack ? "CLIENT" : "BUSINESS",
-      servicePreference: newUser.servicePreference, // ✅ returned to frontend
+      servicePreference: newUser.servicePreference,
       referralCode: isClientTrack ? newReferralCode : null,
     });
   } catch (err) {
@@ -158,7 +180,7 @@ exports.loginUser = async (req, res, next) => {
     const { email, phone, password } = req.body;
 
     if (!email && !phone)
-      return res.status(400).json({ message: "Email or phone number is required" });
+      return res.status(400).json({ message: "Email or phone is required" });
 
     const orConditions = [];
     if (email) orConditions.push({ email: email.toLowerCase().trim() });
@@ -178,10 +200,16 @@ exports.loginUser = async (req, res, next) => {
       refreshToken,
       role: user.role,
       userId: user._id,
-      username: user.username,
+      username: user.username,       // ✅ consistent field name
+      email: user.email,
+      phone: user.phone,
+      avatar: user.avatar,
       storeId: user.storeId || null,
       track: CLIENT_ROLES.includes(user.role) ? "CLIENT" : "BUSINESS",
-      servicePreference: user.servicePreference, // ✅ returned so app knows MEN/WOMEN
+      servicePreference: user.servicePreference,
+      referralCode: user.referralCode,
+      points: user.points,
+      wallet: user.wallet,
     });
   } catch (err) {
     next(err);
@@ -193,12 +221,20 @@ const handleSocialLogin = async (req, res, next, provider) => {
   try {
     const { email, name, socialId, servicePreference } = req.body;
     if (!email || !name || !socialId)
-      return res.status(400).json({ message: "email, name and socialId are required" });
+      return res.status(400).json({ message: "email, name and socialId required" });
 
     let user = await User.findOne({ email });
 
     if (!user) {
-      // ✅ New social user — create with servicePreference from onboarding
+      // ✅ Generate referral code for new social client
+      let newReferralCode = null;
+      let unique = false;
+      while (!unique) {
+        newReferralCode = generateReferralCode();
+        const clash = await User.findOne({ referralCode: newReferralCode });
+        if (!clash) unique = true;
+      }
+
       user = new User({
         username: name,
         email,
@@ -207,7 +243,8 @@ const handleSocialLogin = async (req, res, next, provider) => {
         facebookId: provider === "facebook" ? socialId : null,
         socialProvider: provider,
         role: "CLIENT",
-        servicePreference: servicePreference || null, // ✅ from screen 2
+        servicePreference: servicePreference || null,
+        referralCode: newReferralCode,
       });
       await user.save();
     }
@@ -220,10 +257,15 @@ const handleSocialLogin = async (req, res, next, provider) => {
       token,
       refreshToken,
       userId: user._id,
-      role: user.role,
       username: user.username,
+      email: user.email,
+      avatar: user.avatar,
+      role: user.role,
       track: "CLIENT",
-      servicePreference: user.servicePreference, // ✅ returned
+      servicePreference: user.servicePreference,
+      referralCode: user.referralCode,
+      points: user.points,
+      wallet: user.wallet,
     });
   } catch (err) {
     next(err);
@@ -241,7 +283,7 @@ exports.socialLogin = (req, res, next) => {
   return handleSocialLogin(req, res, next, provider);
 };
 
-// ─── LOGOUT & TOKEN ───────────────────────────────────────────────────────────
+// ─── LOGOUT ───────────────────────────────────────────────────────────────────
 exports.logout = async (req, res, next) => {
   try {
     res.json({ message: "Logged out successfully" });
@@ -250,6 +292,7 @@ exports.logout = async (req, res, next) => {
   }
 };
 
+// ─── REFRESH TOKEN ────────────────────────────────────────────────────────────
 exports.refreshToken = async (req, res, next) => {
   try {
     const { refreshToken } = req.body;
@@ -261,7 +304,12 @@ exports.refreshToken = async (req, res, next) => {
     if (!user) return res.status(401).json({ message: "User not found" });
 
     const newToken = generateToken(user._id, user.role, user.storeId);
-    res.json({ token: newToken });
+    res.json({
+      token: newToken,
+      userId: user._id,
+      role: user.role,
+      storeId: user.storeId || null,
+    });
   } catch (err) {
     next(err);
   }
@@ -272,7 +320,7 @@ exports.getProfile = async (req, res, next) => {
   try {
     const user = await User.findById(req.user.id)
       .select("-password -otp -otpExpiry")
-      .populate("storeId", "storeName storeType");
+      .populate("storeId", "storeName storeType logo");
     if (!user) return res.status(404).json({ message: "User not found" });
     res.json(user);
   } catch (err) {
@@ -285,9 +333,12 @@ exports.updateProfile = async (req, res, next) => {
     const allowedUpdates = [
       "username",
       "phone",
+      "address",
       "servicePreference",
       "language",
       "fcmToken",
+      "dateOfBirth",
+      "gender",
     ];
     const updates = {};
     allowedUpdates.forEach((field) => {
@@ -383,7 +434,7 @@ exports.getFavorites = async (req, res, next) => {
       .select("favorites")
       .populate({
         path: "favorites",
-        select: "storeName storeType logo rating numReviews services location",
+        select: "storeName storeType logo rating numReviews services location isOpen",
       });
 
     if (!user) return res.status(404).json({ message: "User not found" });
@@ -407,12 +458,10 @@ exports.toggleFavorite = async (req, res, next) => {
     const isFavorited = user.favorites.map(String).includes(String(storeId));
 
     if (isFavorited) {
-      // ✅ Remove from favorites
       user.favorites = user.favorites.filter(
         (id) => String(id) !== String(storeId)
       );
     } else {
-      // ✅ Add to favorites
       user.favorites.push(storeId);
     }
 
@@ -433,7 +482,7 @@ exports.forgotPassword = async (req, res, next) => {
     const { email, phone } = req.body;
 
     if (!email && !phone)
-      return res.status(400).json({ message: "Email or phone number is required" });
+      return res.status(400).json({ message: "Email or phone is required" });
 
     const orConditions = [];
     if (email) orConditions.push({ email: email.toLowerCase().trim() });
@@ -455,7 +504,7 @@ exports.verifyOtp = async (req, res, next) => {
     const { email, phone, otp } = req.body;
 
     if (!email && !phone)
-      return res.status(400).json({ message: "Email or phone number is required" });
+      return res.status(400).json({ message: "Email or phone is required" });
 
     const orConditions = [];
     if (email) orConditions.push({ email: email.toLowerCase().trim() });
@@ -482,7 +531,7 @@ exports.resetPassword = async (req, res, next) => {
     const { email, phone, otp, newPassword } = req.body;
 
     if (!email && !phone)
-      return res.status(400).json({ message: "Email or phone number is required" });
+      return res.status(400).json({ message: "Email or phone is required" });
 
     const orConditions = [];
     if (email) orConditions.push({ email: email.toLowerCase().trim() });
@@ -514,7 +563,7 @@ exports.resendOtp = async (req, res, next) => {
     const { email, phone } = req.body;
 
     if (!email && !phone)
-      return res.status(400).json({ message: "Email or phone number is required" });
+      return res.status(400).json({ message: "Email or phone is required" });
 
     const orConditions = [];
     if (email) orConditions.push({ email: email.toLowerCase().trim() });
