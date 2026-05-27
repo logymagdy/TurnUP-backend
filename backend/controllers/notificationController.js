@@ -8,8 +8,15 @@ exports.getMyNotifications = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(50);
 
+    // ✅ Count unread for badge
+    const unreadCount = await Notification.countDocuments({
+      userId: req.user.id,
+      isRead: false,
+    });
+
     return res.status(200).json({
       message: "Notifications retrieved.",
+      unreadCount,
       notifications,
     });
   } catch (err) {
@@ -25,12 +32,11 @@ exports.markAsRead = async (req, res) => {
     const notification = await Notification.findOneAndUpdate(
       { _id: notificationId, userId: req.user.id },
       { isRead: true },
-      { new: true }
+      { returnDocument: "after" }
     );
 
-    if (!notification) {
+    if (!notification)
       return res.status(404).json({ message: "Notification not found." });
-    }
 
     return res.status(200).json({
       message: "Notification marked as read.",
@@ -60,13 +66,27 @@ exports.savePushToken = async (req, res) => {
   try {
     const { fcmToken } = req.body;
 
-    if (!fcmToken) {
+    if (!fcmToken)
       return res.status(400).json({ message: "FCM token is required." });
-    }
 
     await User.findByIdAndUpdate(req.user.id, { fcmToken });
 
     return res.status(200).json({ message: "Push token saved successfully." });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+// ─── GET UNREAD COUNT ─────────────────────────────────────────────────────────
+// ✅ Used for bell icon badge on home screen
+exports.getUnreadCount = async (req, res) => {
+  try {
+    const count = await Notification.countDocuments({
+      userId: req.user.id,
+      isRead: false,
+    });
+
+    return res.status(200).json({ unreadCount: count });
   } catch (err) {
     return res.status(500).json({ message: err.message });
   }
