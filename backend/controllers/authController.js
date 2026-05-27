@@ -2,15 +2,15 @@ const User = require("../models/userModel");
 const jwt = require("jsonwebtoken");
 const twilio = require("twilio");
 const { generateReferralCode } = require("../utils/generateReferralCode");
-const Brevo = require("@getbrevo/brevo");
+const { TransactionalEmailsApi, SendSmtpEmail } = require("@getbrevo/brevo");
 
 const BUSINESS_ROLES = ["serviceProvider", "RECEPTIONIST", "STYLIST"];
 const CLIENT_ROLES = ["CLIENT"];
 const ALL_ALLOWED_ROLES = [...BUSINESS_ROLES, ...CLIENT_ROLES];
 
 // ─── BREVO EMAIL CLIENT ────────────────────────────────────────────────────────
-const brevoClient = new Brevo.TransactionalEmailsApi();
-brevoClient.authentications.apiKey.apiKey = process.env.BREVO_API_KEY;
+const brevoClient = new TransactionalEmailsApi();
+brevoClient.authentications["api-key"].apiKey = process.env.BREVO_API_KEY;
 
 // ─── TWILIO CLIENT ─────────────────────────────────────────────────────────────
 let twilioClient = null;
@@ -59,7 +59,7 @@ const otpEmailTemplate = (otp) => `
 // ─── SEND OTP HELPER ──────────────────────────────────────────────────────────
 const sendOtp = async (user) => {
   const otp = generateOtp();
-  const otpExpiry = new Date(Date.now() + 5 * 60 * 1000); // ✅ 5 minutes
+  const otpExpiry = new Date(Date.now() + 5 * 60 * 1000);
 
   user.otp = otp;
   user.otpExpiry = otpExpiry;
@@ -69,16 +69,14 @@ const sendOtp = async (user) => {
 
   if (user.email) {
     try {
-      // ✅ Fixed Brevo payload initialization structure
-      const sendSmtpEmail = {
-        subject: "TurnUP — Your Verification Code",
-        htmlContent: otpEmailTemplate(otp),
-        sender: {
-          name: process.env.EMAIL_FROM_NAME || "TurnUP",
-          email: process.env.EMAIL_FROM || "logymagdy8@gmail.com",
-        },
-        to: [{ email: user.email }],
+      const sendSmtpEmail = new SendSmtpEmail();
+      sendSmtpEmail.subject = "TurnUP — Your Verification Code";
+      sendSmtpEmail.htmlContent = otpEmailTemplate(otp);
+      sendSmtpEmail.sender = {
+        name: process.env.EMAIL_FROM_NAME || "TurnUP",
+        email: process.env.EMAIL_FROM || "logymagdy8@gmail.com",
       };
+      sendSmtpEmail.to = [{ email: user.email }];
 
       await brevoClient.sendTransacEmail(sendSmtpEmail);
       console.log(`✅ OTP sent to ${user.email}`);
@@ -125,7 +123,6 @@ exports.registerUser = async (req, res, next) => {
     if (!email && !phone)
       return res.status(400).json({ message: "Email or phone is required" });
 
-    // ✅ Password strength check
     if (password && password.length < 8)
       return res.status(400).json({ message: "Password must be at least 8 characters" });
 
@@ -544,7 +541,6 @@ exports.verifyOtp = async (req, res, next) => {
     if (!user.otp || user.otp !== otp || user.otpExpiry < Date.now()) {
       user.otpAttempts = (user.otpAttempts || 0) + 1;
 
-      // ✅ Lock after 5 wrong attempts
       if (user.otpAttempts >= 5) {
         user.otpLockedUntil = new Date(Date.now() + 15 * 60 * 1000);
         user.otpAttempts = 0;
