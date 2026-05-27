@@ -6,6 +6,19 @@ const serviceSchema = new mongoose.Schema({
   durationMin: { type: Number, required: true },
   durationMax: { type: Number, required: true },
   description: { type: String, default: null },
+  image: { type: String, default: null },       // ✅ service image
+  category: { type: String, default: null },    // ✅ Hair, Nails, Facial etc
+  discountPercent: { type: Number, default: 0 }, // ✅ discount badge
+  isActive: { type: Boolean, default: true },
+});
+
+// ✅ Package schema — bundles of services at fixed price
+const packageSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  description: { type: String, default: null },
+  services: [{ type: String }],  // list of service names included
+  price: { type: Number, required: true },
+  image: { type: String, default: null },
   isActive: { type: Boolean, default: true },
 });
 
@@ -51,8 +64,16 @@ const moderationLogSchema = new mongoose.Schema(
 
 const storeSchema = new mongoose.Schema(
   {
-    owner: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-    storeName: { type: String, required: [true, "Store name is required"], trim: true },
+    owner: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    storeName: {
+      type: String,
+      required: [true, "Store name is required"],
+      trim: true,
+    },
     storeType: {
       type: String,
       enum: ["barbershop", "beautySalon"],
@@ -62,13 +83,20 @@ const storeSchema = new mongoose.Schema(
     phone: { type: String, default: null },
     logo: { type: String, default: null },
     bio: { type: String, default: null },
+
+    // ✅ Gallery images
+    gallery: [{ type: String }],
+
+    // ✅ View count
+    viewCount: { type: Number, default: 0 },
+
     services: [serviceSchema],
+    packages: [packageSchema],  // ✅ store packages
     seats: [seatSchema],
 
-    // ── Store availability controls ────────────────────────────────────
     isWorkDayActive: { type: Boolean, default: false },
-    isOpen: { type: Boolean, default: false },       // ✅ Store is open for bookings
-    isPaused: { type: Boolean, default: false },     // ✅ Temporarily paused (breaks etc)
+    isOpen: { type: Boolean, default: false },
+    isPaused: { type: Boolean, default: false },
 
     workingHours: {
       days: [{ type: String }],
@@ -82,19 +110,21 @@ const storeSchema = new mongoose.Schema(
       autoAssignStaff: { type: Boolean, default: true },
       showWaitTime: { type: Boolean, default: true },
       manualQueueControl: { type: Boolean, default: false },
-      maxGroupSize: { type: Number, default: 7 },       // ✅ Max group size is 7
-      queueExpiryMinutes: { type: Number, default: 30 }, // ✅ Updated to 30 mins
+      maxGroupSize: { type: Number, default: 7 },
+      queueExpiryMinutes: { type: Number, default: 30 },
       noShowPenalty: { type: Number, default: 15 },
     },
 
     loyaltyProgram: {
       enabled: { type: Boolean, default: false },
       pointsPerVisit: { type: Number, default: 0 },
-      redemptionRules: [{
-        pointsNeeded: Number,
-        rewardType: String,
-        value: Number,
-      }],
+      redemptionRules: [
+        {
+          pointsNeeded: Number,
+          rewardType: String,
+          value: Number,
+        },
+      ],
     },
 
     rating: { type: Number, default: 0 },
@@ -102,7 +132,6 @@ const storeSchema = new mongoose.Schema(
     receptionists: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     stylists: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
 
-    // ── ONBOARDING APPROVAL SYSTEM ─────────────────────────────────────
     approvalStatus: {
       type: String,
       enum: ["PENDING", "APPROVED", "REJECTED"],
@@ -116,7 +145,6 @@ const storeSchema = new mongoose.Schema(
       address: { type: String, default: null },
     },
 
-    // ── OPERATIONAL STATUS ─────────────────────────────────────────────
     operationalStatus: {
       type: String,
       enum: ["ACTIVE", "UNDER_INVESTIGATION", "SUSPENDED", "BANNED"],
@@ -126,14 +154,12 @@ const storeSchema = new mongoose.Schema(
     warningCount: { type: Number, default: 0 },
     moderationLog: [moderationLogSchema],
 
-    // ── Legacy status field ────────────────────────────────────────────
     status: {
       type: String,
       enum: ["ACTIVE", "SUSPENDED"],
       default: "ACTIVE",
     },
 
-    // ── SUBSCRIPTION SYSTEM ────────────────────────────────────────────
     subscriptionStatus: {
       type: String,
       enum: ["TRIAL", "ACTIVE", "EXPIRED"],
@@ -141,9 +167,9 @@ const storeSchema = new mongoose.Schema(
     },
     trialStartDate: { type: Date, default: null },
     trialEndDate: { type: Date, default: null },
-    lastPaymentDate: { type: Date, default: null },       // ✅ Added
-    nextPaymentDate: { type: Date, default: null },       // ✅ Added
-    gracePeriodEndsAt: { type: Date, default: null },     // ✅ Added
+    lastPaymentDate: { type: Date, default: null },
+    nextPaymentDate: { type: Date, default: null },
+    gracePeriodEndsAt: { type: Date, default: null },
 
     paymentSetup: {
       acceptedMethods: [{ type: String }],
@@ -160,7 +186,7 @@ const storeSchema = new mongoose.Schema(
     },
     depositAmount: { type: Number, default: 0 },
     refundPolicy: {
-      normalCancellationMinutes: { type: Number, default: 30 },  // ✅ Updated to 30
+      normalCancellationMinutes: { type: Number, default: 30 },
       homeCancellationMinutes: { type: Number, default: 30 },
       eventCancellationMinutes: { type: Number, default: 60 },
       refundType: {
