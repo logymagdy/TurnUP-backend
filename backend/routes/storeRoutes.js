@@ -26,6 +26,8 @@ const {
   getFeaturedStores,
   getAllStores,
   getStoreDetails,
+  getAvailableSlots,
+  getStoreSpecialists,
   getStoresWithOffers,
 } = require("../controllers/storeController");
 const { protect, allowRoles } = require("../middleware/authMiddleware");
@@ -69,5 +71,9 @@ router.get("/all", protect, getAllStores);
 router.get("/featured", protect, getFeaturedStores);
 router.get("/offers", protect, getStoresWithOffers);
 router.get("/view/:id", protect, getStoreDetails);
+
+// ─── BOOKING FLOW ─────────────────────────────────────────────────────────────
+router.get("/:storeId/slots", protect, getAvailableSlots);
+router.get("/:storeId/specialists", protect, getStoreSpecialists);
 
 module.exports = router;
