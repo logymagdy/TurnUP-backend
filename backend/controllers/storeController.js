@@ -1,5 +1,6 @@
 const Store = require("../models/storeModel");
 const User = require("../models/userModel");
+const Appointment = require("../models/appointmentModel");
 const { success, error } = require("../utils/responseHandler");
 
 // ─── ONBOARDING WIZARD ────────────────────────────────────────────────────────
@@ -40,7 +41,7 @@ exports.completeBusinessProfile = async (req, res) => {
     const store = await Store.findOneAndUpdate(
       { owner: req.user.id },
       { storeName, storeType, location, phone, logo },
-      { new: true, upsert: true }
+      { returnDocument: "after", upsert: true }
     );
 
     await User.findByIdAndUpdate(req.user.id, { storeId: store._id });
@@ -55,7 +56,7 @@ exports.updateBusinessSetup = async (req, res) => {
     const store = await Store.findOneAndUpdate(
       { owner: req.user.id },
       { $set: req.body },
-      { new: true, runValidators: true }
+      { returnDocument: "after", runValidators: true }
     );
     if (!store) return res.status(404).json({ message: "Store not found" });
     res.json({ success: true, message: "Setup saved", store });
@@ -66,7 +67,6 @@ exports.updateBusinessSetup = async (req, res) => {
 
 exports.addStaffMember = async (req, res) => {
   try {
-    const { name, age, role, servicesHandled } = req.body;
     res.json({ success: true, message: "Staff member added to setup list" });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -80,7 +80,7 @@ exports.finishStoreSetup = async (req, res) => {
     const store = await Store.findOneAndUpdate(
       { owner: req.user.id },
       { $set: { loyaltyProgram, paymentSetup, approvalStatus: "PENDING" } },
-      { new: true }
+      { returnDocument: "after" }
     );
     if (!store) return res.status(404).json({ message: "Store not found" });
     res.json({ success: true, message: "Setup complete!", store });
@@ -89,7 +89,7 @@ exports.finishStoreSetup = async (req, res) => {
   }
 };
 
-// ─── DASHBOARD OPERATIONS ─────────────────────────────────────────────────────
+// ─── STORE AVAILABILITY CONTROLS ──────────────────────────────────────────────
 
 exports.toggleWorkDay = async (req, res) => {
   try {
@@ -97,8 +97,12 @@ exports.toggleWorkDay = async (req, res) => {
 
     const store = await Store.findOneAndUpdate(
       { owner: req.user.id },
-      { isWorkDayActive: isActive },
-      { new: true }
+      {
+        isWorkDayActive: isActive,
+        isOpen: isActive,
+        isPaused: false,
+      },
+      { returnDocument: "after" }
     );
     if (!store) return res.status(404).json({ message: "Store not found" });
 
@@ -107,6 +111,34 @@ exports.toggleWorkDay = async (req, res) => {
       message: isActive ? "Work day started!" : "Work day ended.",
       store,
     });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.pauseStore = async (req, res) => {
+  try {
+    const store = await Store.findOneAndUpdate(
+      { owner: req.user.id },
+      { isPaused: true },
+      { returnDocument: "after" }
+    );
+    if (!store) return res.status(404).json({ message: "Store not found" });
+    res.json({ success: true, message: "Store paused.", store });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.resumeStore = async (req, res) => {
+  try {
+    const store = await Store.findOneAndUpdate(
+      { owner: req.user.id },
+      { isPaused: false },
+      { returnDocument: "after" }
+    );
+    if (!store) return res.status(404).json({ message: "Store not found" });
+    res.json({ success: true, message: "Store resumed.", store });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -154,7 +186,7 @@ exports.updateStore = async (req, res) => {
     const store = await Store.findOneAndUpdate(
       { owner: req.user.id },
       req.body,
-      { new: true, runValidators: true }
+      { returnDocument: "after", runValidators: true }
     );
     if (!store) return res.status(404).json({ message: "Store not found" });
     res.json({ message: "Store updated successfully", store });
@@ -323,7 +355,6 @@ exports.deleteService = async (req, res) => {
 };
 
 // ─── CLIENT DISCOVERY ─────────────────────────────────────────────────────────
-// SUSPENDED and BANNED stores are hidden from all discovery endpoints
 
 exports.getPublicStore = async (req, res) => {
   try {
@@ -333,9 +364,9 @@ exports.getPublicStore = async (req, res) => {
       operationalStatus: { $in: ["ACTIVE", "UNDER_INVESTIGATION"] },
     })
       .select(
-        "storeName storeType location bio logo services workingHours seats isWorkDayActive status approvalStatus operationalStatus stylists"
+        "storeName storeType location bio logo services workingHours seats isWorkDayActive isOpen isPaused rating numReviews operationalStatus stylists"
       )
-      .populate("stylists", "username");
+      .populate("stylists", "username avatar");
 
     if (!store) return res.status(404).json({ message: "Store not found or unavailable." });
 
@@ -351,7 +382,7 @@ exports.getAllStores = async (req, res) => {
       approvalStatus: "APPROVED",
       operationalStatus: { $in: ["ACTIVE", "UNDER_INVESTIGATION"] },
     }).select(
-      "storeName storeType location bio logo services workingHours isWorkDayActive"
+      "storeName storeType location bio logo services workingHours isWorkDayActive isOpen isPaused rating numReviews"
     );
 
     res.json(stores);
@@ -360,22 +391,70 @@ exports.getAllStores = async (req, res) => {
   }
 };
 
+// ─── SEARCH — supports salon name + service name + filters ───────────────────
 exports.searchStores = async (req, res) => {
   try {
-    const { keyword, type, location } = req.query;
+    const {
+      keyword,
+      type,
+      location,
+      date,
+      service,
+      minRating,
+      maxDistance,
+      lat,
+      lng,
+    } = req.query;
 
     const query = {
       approvalStatus: "APPROVED",
       operationalStatus: { $in: ["ACTIVE", "UNDER_INVESTIGATION"] },
     };
 
-    if (keyword) query.storeName = { $regex: keyword, $options: "i" };
+    // ✅ Search by salon name OR service name
+    if (keyword) {
+      query.$or = [
+        { storeName: { $regex: keyword, $options: "i" } },
+        { "services.name": { $regex: keyword, $options: "i" } },
+      ];
+    }
+
+    // ✅ Filter by store type
     if (type) query.storeType = type;
+
+    // ✅ Filter by location string
     if (location) query.location = { $regex: location, $options: "i" };
 
-    const stores = await Store.find(query)
-      .select("storeName storeType location bio logo services workingHours isWorkDayActive")
+    // ✅ Filter by service category
+    if (service) {
+      query["services.name"] = { $regex: service, $options: "i" };
+    }
+
+    // ✅ Filter by minimum rating
+    if (minRating) {
+      query.rating = { $gte: parseFloat(minRating) };
+    }
+
+    // ✅ Filter by date — stores open on that day
+    if (date) {
+      const dayName = new Date(date).toLocaleDateString("en-US", { weekday: "long" });
+      query["workingHours.days"] = dayName;
+    }
+
+    let stores = await Store.find(query)
+      .select("storeName storeType location bio logo services workingHours isWorkDayActive isOpen isPaused rating numReviews")
       .limit(50);
+
+    // ✅ Filter by distance if lat/lng provided
+    if (lat && lng && maxDistance) {
+      const userLat = parseFloat(lat);
+      const userLng = parseFloat(lng);
+      const maxDist = parseFloat(maxDistance); // in km
+
+      // Simple distance filter — stores don't have coordinates yet
+      // This is a placeholder — upgrade to MongoDB $geoNear when stores have coordinates
+      // For now returns all stores within the text location match
+    }
 
     return success(res, "Stores fetched successfully", stores);
   } catch (err) {
@@ -383,13 +462,14 @@ exports.searchStores = async (req, res) => {
   }
 };
 
+// ─── FEATURED STORES — top rated ──────────────────────────────────────────────
 exports.getFeaturedStores = async (req, res) => {
   try {
     const stores = await Store.find({
       approvalStatus: "APPROVED",
       operationalStatus: { $in: ["ACTIVE", "UNDER_INVESTIGATION"] },
     })
-      .select("storeName storeType location bio logo services workingHours isWorkDayActive")
+      .select("storeName storeType location bio logo services workingHours isWorkDayActive isOpen rating numReviews")
       .sort({ rating: -1 })
       .limit(10);
 
@@ -402,7 +482,7 @@ exports.getFeaturedStores = async (req, res) => {
 exports.getStoreDetails = async (req, res) => {
   try {
     const store = await Store.findById(req.params.id)
-      .populate("stylists", "username email phone")
+      .populate("stylists", "username email phone avatar")
       .populate("receptionists", "username email");
 
     if (!store) return res.status(404).json({ message: "Store not found" });
@@ -412,10 +492,39 @@ exports.getStoreDetails = async (req, res) => {
   }
 };
 
-exports.toggleFavorite = async (req, res) => {
+// ─── OFFERS — stores with active promotions ────────────────────────────────────
+exports.getStoresWithOffers = async (req, res) => {
   try {
-    return res.status(501).json({ message: "Favorites feature is not yet implemented." });
+    const now = new Date();
+    const Promotion = require("../models/promotionModel");
+
+    const activePromotions = await Promotion.find({
+      isActive: true,
+      startDate: { $lte: now },
+      endDate: { $gte: now },
+    }).populate({
+      path: "storeId",
+      select: "storeName storeType logo rating numReviews services location approvalStatus operationalStatus",
+      match: {
+        approvalStatus: "APPROVED",
+        operationalStatus: { $in: ["ACTIVE", "UNDER_INVESTIGATION"] },
+      },
+    });
+
+    // Filter out null storeId (non-approved stores)
+    const offers = activePromotions
+      .filter((p) => p.storeId)
+      .map((p) => ({
+        promotionId: p._id,
+        discountPercentage: p.discountPercentage,
+        description: p.description,
+        services: p.services,
+        endDate: p.endDate,
+        store: p.storeId,
+      }));
+
+    return success(res, "Offers fetched successfully", offers);
   } catch (err) {
-    return error(res, "Could not update favorites", 500);
+    return error(res, "Failed to get offers", 500);
   }
 };
