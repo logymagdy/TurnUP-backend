@@ -7,13 +7,12 @@ const { sendNotification } = require("../services/notificationServices");
 const { assignQueueSlot, calculateLiveQueue } = require("../services/queueService");
 const { emitQueueUpdate, emitFullQueueRefresh } = require("../services/queueSocket");
 
-// ─── HELPER — recalculate queue and emit full refresh ─────────────────────────
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
 const refreshQueue = async (io, storeId, date) => {
   const queueData = await calculateLiveQueue(storeId, date);
   emitFullQueueRefresh(io, storeId, queueData);
 };
 
-// ─── HELPER — deduplicate services array by name ──────────────────────────────
 const deduplicateServices = (services) => {
   const seen = new Set();
   return services.filter((s) => {
@@ -23,7 +22,6 @@ const deduplicateServices = (services) => {
   });
 };
 
-// ─── HELPER — calculate total from services array ─────────────────────────────
 const calculateServicesTotal = (services) => {
   return services.reduce((sum, s) => sum + (s.price || 0), 0);
 };
@@ -44,7 +42,6 @@ exports.createBooking = async (req, res) => {
       paymentMethod,
     } = req.body;
 
-    // ── 1. Store exists and is approved ───────────────────────────────
     const store = await Store.findById(storeId);
     if (!store)
       return res.status(404).json({ message: "Store not found." });
@@ -52,12 +49,11 @@ exports.createBooking = async (req, res) => {
     if (store.approvalStatus !== "APPROVED")
       return res.status(403).json({ message: "This store is not currently accepting bookings." });
 
-    // ── 2. Check store is open and not paused ──────────────────────────
     if (!store.isOpen)
       return res.status(403).json({ message: "This store is currently closed." });
 
     if (store.isPaused)
-      return res.status(403).json({ message: "This store is temporarily paused. Please try again shortly." });
+      return res.status(403).json({ message: "This store is temporarily paused." });
 
     if (
       store.operationalStatus === "SUSPENDED" ||
@@ -65,8 +61,6 @@ exports.createBooking = async (req, res) => {
     )
       return res.status(403).json({ message: "This store is temporarily unavailable." });
 
-    // ── 3. Client debt check ───────────────────────────────────────────
-    // Client can still book but debt must be paid before next booking
     const client = await User.findById(req.user.id).select("debt");
     if (client.debt > 0)
       return res.status(403).json({
@@ -74,7 +68,6 @@ exports.createBooking = async (req, res) => {
         debt: client.debt,
       });
 
-    // ── 4. Validate services array ─────────────────────────────────────
     if (!rawServices || !Array.isArray(rawServices) || rawServices.length === 0)
       return res.status(400).json({ message: "At least one service is required." });
 
@@ -83,7 +76,7 @@ exports.createBooking = async (req, res) => {
     for (const svc of services) {
       if (!svc.durationMin || !svc.durationMax || svc.durationMin <= 0 || svc.durationMax <= 0)
         return res.status(400).json({
-          message: `Service "${svc.name}" has invalid duration. durationMin and durationMax are required.`,
+          message: `Service "${svc.name}" has invalid duration.`,
         });
 
       const storeService = store.services.find(
@@ -95,14 +88,13 @@ exports.createBooking = async (req, res) => {
         });
       if (storeService.price !== svc.price)
         return res.status(400).json({
-          message: `Price mismatch for service "${svc.name}". Expected ${storeService.price} EGP.`,
+          message: `Price mismatch for "${svc.name}". Expected ${storeService.price} EGP.`,
         });
     }
 
     const totalAmount = calculateServicesTotal(services);
     const primaryService = services[0];
 
-    // ── 5. Stylist double-booking check ───────────────────────────────
     const existingAppointment = await Appointment.findOne({
       stylist: stylistId,
       date,
@@ -113,32 +105,27 @@ exports.createBooking = async (req, res) => {
     if (existingAppointment)
       return res.status(400).json({ message: "Stylist already booked for this time." });
 
-    // ── 6. Stylist belongs to this store ──────────────────────────────
     const stylistInStore = store.stylists.some(
       (s) => String(s) === String(stylistId)
     );
     if (!stylistInStore)
       return res.status(400).json({ message: "Selected stylist does not belong to this store." });
 
-    // ── 7. Group booking validation ───────────────────────────────────
     let totalGroupPrice = 0;
     let validatedGroupMembers = [];
 
     if (isGroupBooking) {
       if (!groupMembers || groupMembers.length < 1)
         return res.status(400).json({
-          message: "Group booking requires at least 2 members including yourself.",
+          message: "Group booking requires at least 2 members.",
         });
 
-      // ✅ NORMAL online booking max 2 members (booker + 1)
-      // ✅ HOME/EVENT booking max 7 members (booker + 6)
-      const maxGroup = (bookingType === "HOME" || bookingType === "EVENT")
-        ? 7
-        : 2;
+      const maxGroup =
+        bookingType === "HOME" || bookingType === "EVENT" ? 7 : 2;
 
       if (groupMembers.length + 1 > maxGroup)
         return res.status(400).json({
-          message: `Group size exceeds maximum allowed for ${bookingType || "NORMAL"} bookings (${maxGroup} members total).`,
+          message: `Group size exceeds maximum (${maxGroup} members).`,
         });
 
       totalGroupPrice = groupMembers.reduce(
@@ -148,11 +135,10 @@ exports.createBooking = async (req, res) => {
       validatedGroupMembers = groupMembers;
     }
 
-    // ── 8. Deposit calculation for HOME / EVENT ───────────────────────
     let depositAmount = 0;
     if (bookingType === "HOME" || bookingType === "EVENT") {
       if (!address)
-        return res.status(400).json({ message: "Address is required for HOME and EVENT bookings." });
+        return res.status(400).json({ message: "Address required for HOME/EVENT." });
 
       if (store.depositType === "FIXED") {
         depositAmount = store.depositAmount || 0;
@@ -160,16 +146,15 @@ exports.createBooking = async (req, res) => {
         depositAmount = (totalAmount * store.depositAmount) / 100;
       }
 
-      if (depositAmount > 0 && paymentMethod !== "CASH") {
+      if (depositAmount > 0 && paymentMethod !== "PAY_AT_STORE") {
         return res.status(400).json({
-          message: "HOME and EVENT bookings require a deposit payment before confirmation.",
+          message: "HOME/EVENT bookings require a deposit.",
           depositAmount,
           requiresDeposit: true,
         });
       }
     }
 
-    // ── 9. Assign queue slot for NORMAL bookings ───────────────────────
     let queueNumber = null;
     let estimatedStartTime = null;
     let expiryTime = null;
@@ -182,7 +167,6 @@ exports.createBooking = async (req, res) => {
       expiryTime = slot.expiryTime;
     }
 
-    // ── 10. Create appointment — directly CONFIRMED (no PENDING) ───────
     const newAppointment = new Appointment({
       storeId,
       client: req.user.id,
@@ -192,7 +176,7 @@ exports.createBooking = async (req, res) => {
       totalAmount,
       date,
       time,
-      status: "CONFIRMED", // ✅ Always CONFIRMED directly
+      status: "CONFIRMED",
       bookingType: bookingType || "NORMAL",
       address: bookingType === "HOME" || bookingType === "EVENT" ? address : null,
       deposit: depositAmount,
@@ -210,7 +194,6 @@ exports.createBooking = async (req, res) => {
 
     await newAppointment.save();
 
-    // ── 11. Emit queue update ──────────────────────────────────────────
     const io = req.app.get("io");
     await refreshQueue(io, storeId, date);
     emitQueueUpdate(io, storeId, "queueChanged", {
@@ -220,7 +203,6 @@ exports.createBooking = async (req, res) => {
       time,
     });
 
-    // ── 12. Notify client ──────────────────────────────────────────────
     const queueMsg = queueNumber
       ? `Queue #${queueNumber} on ${date} at ${time}.`
       : `Appointment on ${date} at ${time}.`;
@@ -234,7 +216,6 @@ exports.createBooking = async (req, res) => {
       "APPOINTMENT"
     );
 
-    // ── 13. Notify store owner ─────────────────────────────────────────
     await sendNotification(
       store.owner,
       "NEW_BOOKING",
@@ -261,21 +242,191 @@ exports.createBooking = async (req, res) => {
 };
 
 // ─── GET MY BOOKINGS ──────────────────────────────────────────────────────────
+// ✅ Returns active bookings for "Bookings" tab
 exports.getMyBookings = async (req, res) => {
   try {
     const { status } = req.query;
 
-    const query = { client: req.user.id };
+    const query = {
+      client: req.user.id,
+      status: { $in: ["CONFIRMED", "CHECKED_IN", "IN_SERVICE"] },
+    };
+
     if (status) query.status = status;
 
     const bookings = await Appointment.find(query)
-      .populate("storeId", "storeName location logo")
-      .populate("stylist", "username")
-      .sort({ date: -1, time: -1 });
+      .populate("storeId", "storeName location logo rating numReviews")
+      .populate("stylist", "username avatar")
+      .sort({ date: 1, time: 1 });
 
     return success(res, "Bookings retrieved", bookings);
   } catch (err) {
     return error(res, "Failed to get bookings", 500);
+  }
+};
+
+// ─── GET BOOKING HISTORY ──────────────────────────────────────────────────────
+// ✅ Returns completed/cancelled for "Booking History" tab
+// Shows: services list, total paid, status badge, date, time, specialist
+exports.getBookingHistory = async (req, res) => {
+  try {
+    const { filter } = req.query;
+    // filter: "all" | "completed" | "cancelled"
+
+    const query = {
+      client: req.user.id,
+      status: { $in: ["DONE", "CANCELLED", "EXPIRED", "NO_SHOW"] },
+    };
+
+    if (filter === "completed") query.status = "DONE";
+    if (filter === "cancelled")
+      query.status = { $in: ["CANCELLED", "EXPIRED", "NO_SHOW"] };
+
+    const bookings = await Appointment.find(query)
+      .populate("storeId", "storeName location logo rating numReviews")
+      .populate("stylist", "username avatar rating")
+      .sort({ date: -1, time: -1 });
+
+    // ✅ Add visit count
+    const visitCount = await Appointment.countDocuments({
+      client: req.user.id,
+      status: "DONE",
+    });
+
+    const result = bookings.map((b) => ({
+      _id: b._id,
+      storeId: b.storeId,
+      stylist: b.stylist,
+      services: b.services,
+      totalAmount: b.totalAmount,
+      date: b.date,
+      time: b.time,
+      status: b.status,
+      paymentMethod: b.paymentMethod,
+      rating: b.rating,
+      complaintId: b.complaintId,
+      isGroupBooking: b.isGroupBooking,
+      cancelledBy: b.cancelledBy,
+      cancellationReason: b.cancellationReason,
+      createdAt: b.createdAt,
+    }));
+
+    return success(res, "Booking history retrieved", {
+      visitCount,
+      bookings: result,
+    });
+  } catch (err) {
+    return error(res, "Failed to get booking history", 500);
+  }
+};
+
+// ─── GET BOOKING DETAILS ──────────────────────────────────────────────────────
+// ✅ Full details for Booking Details screen
+exports.getBookingDetails = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+
+    const appointment = await Appointment.findById(bookingId)
+      .populate("storeId", "storeName location logo phone rating")
+      .populate("stylist", "username avatar rating");
+
+    if (!appointment)
+      return res.status(404).json({ message: "Booking not found." });
+
+    if (String(appointment.client) !== String(req.user.id))
+      return res.status(403).json({ message: "Not authorized." });
+
+    return success(res, "Booking details retrieved", appointment);
+  } catch (err) {
+    return error(res, "Failed to get booking details", 500);
+  }
+};
+
+// ─── GET RECEIPT ──────────────────────────────────────────────────────────────
+// ✅ Get receipt after confirmed booking
+exports.getReceipt = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+
+    const appointment = await Appointment.findById(bookingId)
+      .populate("storeId", "storeName location logo phone")
+      .populate("stylist", "username avatar");
+
+    if (!appointment)
+      return res.status(404).json({ message: "Booking not found." });
+
+    if (String(appointment.client) !== String(req.user.id))
+      return res.status(403).json({ message: "Not authorized." });
+
+    const payment = await Payment.findOne({
+      appointmentId: bookingId,
+      status: { $in: ["COMPLETED", "PENDING"] },
+    });
+
+    return res.status(200).json({
+      message: "Receipt retrieved",
+      receipt: {
+        bookingId: appointment._id,
+        salon: appointment.storeId,
+        stylist: appointment.stylist,
+        services: appointment.services,
+        totalAmount: appointment.totalAmount,
+        date: appointment.date,
+        time: appointment.time,
+        queueNumber: appointment.queueNumber,
+        estimatedStartTime: appointment.estimatedStartTime,
+        paymentMethod: appointment.paymentMethod,
+        isPaid: appointment.isPaid,
+        paymentStatus: payment?.status || "PENDING",
+        status: appointment.status,
+        createdAt: appointment.createdAt,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+// ─── REBOOK ───────────────────────────────────────────────────────────────────
+// ✅ Rebook from history — returns previous booking data pre-filled
+exports.getRebookData = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+
+    const appointment = await Appointment.findById(bookingId)
+      .populate("storeId", "storeName location logo rating services stylists isOpen isPaused operationalStatus approvalStatus")
+      .populate("stylist", "username avatar rating");
+
+    if (!appointment)
+      return res.status(404).json({ message: "Booking not found." });
+
+    if (String(appointment.client) !== String(req.user.id))
+      return res.status(403).json({ message: "Not authorized." });
+
+    // ✅ Check if store is still available
+    const store = appointment.storeId;
+    const storeAvailable =
+      store.approvalStatus === "APPROVED" &&
+      store.operationalStatus === "ACTIVE";
+
+    return res.status(200).json({
+      message: "Rebook data retrieved",
+      rebookData: {
+        store: {
+          _id: store._id,
+          storeName: store.storeName,
+          location: store.location,
+          logo: store.logo,
+          rating: store.rating,
+          isAvailable: storeAvailable,
+        },
+        previousServices: appointment.services,
+        previousStylist: appointment.stylist,
+        bookingType: appointment.bookingType,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
   }
 };
 
@@ -321,17 +472,16 @@ exports.cancelBooking = async (req, res) => {
       return res.status(404).json({ message: "Booking not found." });
 
     if (String(appointment.client) !== String(req.user.id))
-      return res.status(403).json({ message: "Not authorized to cancel this booking." });
+      return res.status(403).json({ message: "Not authorized." });
 
     if (["DONE", "CANCELLED", "EXPIRED"].includes(appointment.status))
       return res.status(400).json({ message: "Cannot cancel this booking." });
 
     if (appointment.refundId)
-      return res.status(400).json({ message: "Refund already processed for this booking." });
+      return res.status(400).json({ message: "Refund already processed." });
 
     const store = await Store.findById(appointment.storeId);
-    if (!store)
-      return res.status(404).json({ message: "Store not found." });
+    if (!store) return res.status(404).json({ message: "Store not found." });
 
     const policy = store.refundPolicy;
     const now = new Date();
@@ -351,7 +501,7 @@ exports.cancelBooking = async (req, res) => {
         await sendNotification(
           req.user.id,
           "PENALTY_APPLIED",
-          `You cancelled too close to your turn. A penalty of ${penalty} EGP has been applied.`,
+          `Penalty of ${penalty} EGP applied for late cancellation.`,
           "Penalty Applied",
           appointment._id,
           "APPOINTMENT"
@@ -365,14 +515,17 @@ exports.cancelBooking = async (req, res) => {
 
       const refundType = policy?.refundType ?? "FULL";
       const partialRefundPercentage = policy?.partialRefundPercentage ?? 0;
-      const appointmentTime = new Date(`${appointment.date}T${appointment.time}`);
+      const appointmentTime = new Date(
+        `${appointment.date}T${appointment.time}`
+      );
       const minutesUntilAppointment = (appointmentTime - now) / (1000 * 60);
 
       if (minutesUntilAppointment >= allowedMinutes) {
         if (refundType === "FULL") {
           refundAmount = appointment.deposit;
         } else if (refundType === "PARTIAL") {
-          refundAmount = (appointment.deposit * partialRefundPercentage) / 100;
+          refundAmount =
+            (appointment.deposit * partialRefundPercentage) / 100;
         }
       }
 
@@ -425,7 +578,7 @@ exports.cancelBooking = async (req, res) => {
     await sendNotification(
       store.owner,
       "CANCELLATION",
-      `A client cancelled their booking. Queue #${appointment.queueNumber}. Refund: ${refundAmount} EGP.`,
+      `Client cancelled booking. Queue #${appointment.queueNumber}.`,
       "Booking Cancelled",
       appointment._id,
       "APPOINTMENT"
@@ -451,15 +604,17 @@ exports.cancelBookingByStore = async (req, res) => {
       return res.status(404).json({ message: "Booking not found." });
 
     if (String(appointment.storeId) !== String(req.user.storeId))
-      return res.status(403).json({ message: "Not authorized to cancel this booking." });
+      return res.status(403).json({ message: "Not authorized." });
 
     if (["DONE", "CANCELLED", "EXPIRED"].includes(appointment.status))
       return res.status(400).json({ message: "Cannot cancel this booking." });
 
     if (appointment.refundId)
-      return res.status(400).json({ message: "Refund already processed for this booking." });
+      return res.status(400).json({ message: "Refund already processed." });
 
-    const refundAmount = appointment.depositPaid ? (appointment.deposit || 0) : 0;
+    const refundAmount = appointment.depositPaid
+      ? appointment.deposit || 0
+      : 0;
 
     if (refundAmount > 0) {
       await User.findByIdAndUpdate(appointment.client, {
@@ -478,7 +633,7 @@ exports.cancelBookingByStore = async (req, res) => {
         refundedAt: new Date(),
         referenceId: appointment._id,
         referenceType: "APPOINTMENT",
-        notes: "Full refund — store cancelled booking",
+        notes: "Full refund — store cancelled",
       });
 
       appointment.refundId = String(refundRecord._id);
@@ -491,7 +646,6 @@ exports.cancelBookingByStore = async (req, res) => {
     appointment.cancellationReason = reason || null;
     await appointment.save();
 
-    // ✅ Client gets 50 loyalty points when store cancels
     await User.findByIdAndUpdate(appointment.client, {
       $inc: { points: 50 },
     });
@@ -506,14 +660,14 @@ exports.cancelBookingByStore = async (req, res) => {
     await sendNotification(
       appointment.client,
       "BOOKING_CANCELLED",
-      `Your booking has been cancelled by the store. You received 50 loyalty points and a full refund of ${refundAmount} EGP.`,
+      `Booking cancelled by store. 50 loyalty points added. Refund: ${refundAmount} EGP.`,
       "Booking Cancelled by Store",
       appointment._id,
       "APPOINTMENT"
     );
 
     return res.status(200).json({
-      message: "Booking cancelled by store. Client notified and 50 loyalty points awarded.",
+      message: "Booking cancelled. Client notified and 50 points awarded.",
       refundAmount,
     });
   } catch (err) {
@@ -521,7 +675,7 @@ exports.cancelBookingByStore = async (req, res) => {
   }
 };
 
-// ─── START SERVICE (RECEPTIONIST) ────────────────────────────────────────────
+// ─── START SERVICE ────────────────────────────────────────────────────────────
 exports.startService = async (req, res) => {
   try {
     const { bookingId } = req.params;
@@ -564,7 +718,7 @@ exports.startService = async (req, res) => {
   }
 };
 
-// ─── COMPLETE SERVICE (RECEPTIONIST) ─────────────────────────────────────────
+// ─── COMPLETE SERVICE ─────────────────────────────────────────────────────────
 exports.completeService = async (req, res) => {
   try {
     const { bookingId } = req.params;
@@ -584,10 +738,11 @@ exports.completeService = async (req, res) => {
     appointment.ratingDeadline = new Date(Date.now() + 24 * 60 * 60 * 1000);
     await appointment.save();
 
-    // ✅ Points earned = total amount paid
-    const pointsEarned = Math.floor(appointment.totalAmount || appointment.service.price || 0);
+    const pointsEarned = Math.floor(
+      appointment.totalAmount || appointment.service.price || 0
+    );
     await User.findByIdAndUpdate(appointment.client, {
-      $inc: { points: pointsEarned },
+      $inc: { points: pointsEarned, visitCount: 1 },
     });
 
     const io = req.app.get("io");
@@ -600,7 +755,7 @@ exports.completeService = async (req, res) => {
     await sendNotification(
       appointment.client,
       "SERVICE_DONE",
-      `Your service is complete! You earned ${pointsEarned} loyalty points.`,
+      `Service complete! You earned ${pointsEarned} loyalty points.`,
       "Service Complete",
       appointment._id,
       "APPOINTMENT"
@@ -625,7 +780,7 @@ exports.completeService = async (req, res) => {
   }
 };
 
-// ─── MARK NO SHOW (RECEPTIONIST) ─────────────────────────────────────────────
+// ─── MARK NO SHOW ─────────────────────────────────────────────────────────────
 exports.markNoShow = async (req, res) => {
   try {
     const { bookingId } = req.params;
@@ -638,7 +793,7 @@ exports.markNoShow = async (req, res) => {
       return res.status(403).json({ message: "Not authorized." });
 
     if (!["CONFIRMED", "CHECKED_IN"].includes(appointment.status))
-      return res.status(400).json({ message: "Cannot mark this booking as no-show." });
+      return res.status(400).json({ message: "Cannot mark as no-show." });
 
     appointment.status = "NO_SHOW";
     await appointment.save();
@@ -662,7 +817,7 @@ exports.markNoShow = async (req, res) => {
     await sendNotification(
       appointment.client,
       "TURN_EXPIRED",
-      `Your turn expired. A penalty of ${penalty} EGP has been applied.`,
+      `Your turn expired. Penalty of ${penalty} EGP applied.`,
       "Turn Expired",
       appointment._id,
       "APPOINTMENT"
@@ -671,7 +826,7 @@ exports.markNoShow = async (req, res) => {
     await sendNotification(
       appointment.client,
       "PENALTY_APPLIED",
-      `A no-show penalty of ${penalty} EGP has been added. Please clear it before your next booking.`,
+      `No-show penalty of ${penalty} EGP added.`,
       "Penalty Applied",
       appointment._id,
       "APPOINTMENT"
@@ -687,10 +842,11 @@ exports.markNoShow = async (req, res) => {
 };
 
 // ─── SUBMIT RATING ────────────────────────────────────────────────────────────
+// ✅ Updated to support photo upload in review
 exports.submitRating = async (req, res) => {
   try {
     const { bookingId } = req.params;
-    const { rating, review } = req.body;
+    const { rating, review, photos } = req.body;
 
     if (!rating || rating < 1 || rating > 5)
       return res.status(400).json({ message: "Rating must be between 1 and 5." });
@@ -700,20 +856,21 @@ exports.submitRating = async (req, res) => {
       return res.status(404).json({ message: "Booking not found." });
 
     if (String(appointment.client) !== String(req.user.id))
-      return res.status(403).json({ message: "Not authorized to rate this booking." });
+      return res.status(403).json({ message: "Not authorized." });
 
     if (appointment.status !== "DONE")
-      return res.status(400).json({ message: "You can only rate completed services." });
+      return res.status(400).json({ message: "Can only rate completed services." });
 
     if (appointment.rating)
-      return res.status(400).json({ message: "You have already rated this booking." });
+      return res.status(400).json({ message: "Already rated." });
 
     const now = new Date();
     if (now > appointment.ratingDeadline)
-      return res.status(400).json({ message: "Rating window has expired (24 hours)." });
+      return res.status(400).json({ message: "Rating window expired (24 hours)." });
 
     appointment.rating = rating;
     appointment.review = review || null;
+    appointment.reviewPhotos = photos || [];  // ✅ store review photos
     appointment.ratedAt = now;
     await appointment.save();
 
@@ -730,7 +887,25 @@ exports.submitRating = async (req, res) => {
       rating: Math.round(avgRating * 10) / 10,
     });
 
-    return res.status(200).json({ message: "Rating submitted successfully.", rating });
+    // ✅ Update store rating
+    const storeAppointments = await Appointment.find({
+      storeId: appointment.storeId,
+      rating: { $ne: null },
+    });
+
+    const storeAvgRating =
+      storeAppointments.reduce((sum, a) => sum + a.rating, 0) /
+      storeAppointments.length;
+
+    await Store.findByIdAndUpdate(appointment.storeId, {
+      rating: Math.round(storeAvgRating * 10) / 10,
+      numReviews: storeAppointments.length,
+    });
+
+    return res.status(200).json({
+      message: "Rating submitted successfully.",
+      rating,
+    });
   } catch (err) {
     return res.status(500).json({ message: err.message });
   }
