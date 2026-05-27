@@ -7,6 +7,8 @@ const {
   addStaffMember,
   finishStoreSetup,
   toggleWorkDay,
+  pauseStore,
+  resumeStore,
   createStore,
   getStore,
   updateStore,
@@ -22,13 +24,15 @@ const {
   getPublicStore,
   searchStores,
   getFeaturedStores,
-  toggleFavorite,
   getAllStores,
   getStoreDetails,
+  getStoresWithOffers,
 } = require("../controllers/storeController");
 const { protect, allowRoles } = require("../middleware/authMiddleware");
 
 // #swagger.tags = ['Store']
+
+// ─── PUBLIC (no auth needed) ──────────────────────────────────────────────────
 router.get("/search", searchStores);
 router.get("/public/:storeId", getPublicStore);
 
@@ -41,6 +45,8 @@ router.put("/finish-setup", protect, allowRoles("serviceProvider"), finishStoreS
 
 // ─── STORE OPERATIONS ─────────────────────────────────────────────────────────
 router.patch("/toggle-workday", protect, allowRoles("serviceProvider", "RECEPTIONIST"), toggleWorkDay);
+router.patch("/pause", protect, allowRoles("serviceProvider"), pauseStore);
+router.patch("/resume", protect, allowRoles("serviceProvider"), resumeStore);
 router.post("/create", protect, allowRoles("serviceProvider"), createStore);
 router.get("/profile", protect, allowRoles("serviceProvider", "ADMIN", "RECEPTIONIST"), getStore);
 router.put("/update", protect, allowRoles("serviceProvider"), updateStore);
@@ -61,7 +67,7 @@ router.delete("/services/:serviceId", protect, allowRoles("serviceProvider"), de
 // ─── CLIENT DISCOVERY ─────────────────────────────────────────────────────────
 router.get("/all", protect, getAllStores);
 router.get("/featured", protect, getFeaturedStores);
+router.get("/offers", protect, getStoresWithOffers);
 router.get("/view/:id", protect, getStoreDetails);
-router.post("/:storeId/favorite", protect, toggleFavorite);
 
 module.exports = router;
