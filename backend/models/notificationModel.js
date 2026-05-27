@@ -10,26 +10,37 @@ const notificationSchema = new mongoose.Schema(
     type: {
       type: String,
       enum: [
+        // ✅ Queue notifications
         "QUEUE_JOINED",
         "YOURE_NEXT",
         "TEN_MINS_LEFT",
         "SERVICE_STARTED",
         "SERVICE_DONE",
         "TURN_EXPIRED",
+
+        // ✅ Booking notifications
         "BOOKING_CONFIRMED",
         "BOOKING_CANCELLED",
-        "PROMOTION",
-        "SUBSCRIPTION_DUE",
-        "WARNING_ISSUED",
-        "STORE_SUSPENDED",
-        "PENALTY_APPLIED",
         "RATING_PROMPT",
         "NEW_BOOKING",
         "CLIENT_CHECKED_IN",
         "CANCELLATION",
+
+        // ✅ Payment notifications
+        "PENALTY_APPLIED",
+        "SUBSCRIPTION_DUE",
+
+        // ✅ Marketing notifications
+        "PROMOTION",
+        "SPECIAL_OFFER",
+
+        // ✅ Store notifications
+        "STORE_SUSPENDED",
+        "WARNING_ISSUED",
       ],
       required: true,
     },
+    title: { type: String, default: "TurnUP" },
     message: { type: String, required: true },
     isRead: { type: Boolean, default: false },
     referenceId: { type: mongoose.Schema.Types.ObjectId, default: null },
@@ -41,5 +52,8 @@ const notificationSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+notificationSchema.index({ userId: 1, createdAt: -1 });
+notificationSchema.index({ userId: 1, isRead: 1 });
 
 module.exports = mongoose.model("Notification", notificationSchema);
