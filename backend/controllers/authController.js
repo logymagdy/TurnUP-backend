@@ -49,13 +49,11 @@ const sendOtp = async (user) => {
   const otp = generateOtp();
   const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
 
-  // Save OTP to DB
   user.otp = otp;
   user.otpExpiry = otpExpiry;
   await user.save();
 
   if (user.email) {
-    // Send via Resend (email)
     await resend.emails.send({
       from: "TurnUP <onboarding@resend.dev>",
       to: user.email,
@@ -63,7 +61,6 @@ const sendOtp = async (user) => {
       html: otpEmailTemplate(otp),
     });
   } else if (user.phone) {
-    // Send via Twilio (SMS)
     await twilioClient.verify.v2
       .services(process.env.TWILIO_VERIFY_SERVICE_SID)
       .verifications.create({ to: user.phone, channel: "sms" });
@@ -81,7 +78,7 @@ exports.registerUser = async (req, res, next) => {
       password,
       role,
       phone,
-      servicePreference,
+      servicePreference, // ✅ MEN or WOMEN — chosen on onboarding screen 2
       referralCode: incomingReferralCode,
     } = req.body;
 
@@ -94,9 +91,7 @@ exports.registerUser = async (req, res, next) => {
       });
 
     if (!email && !phone)
-      return res
-        .status(400)
-        .json({ message: "Email or phone number is required" });
+      return res.status(400).json({ message: "Email or phone number is required" });
 
     const orConditions = [];
     if (email) orConditions.push({ email: email.toLowerCase().trim() });
@@ -110,9 +105,7 @@ exports.registerUser = async (req, res, next) => {
 
     let referredBy = null;
     if (isClientTrack && incomingReferralCode) {
-      const referrer = await User.findOne({
-        referralCode: incomingReferralCode,
-      });
+      const referrer = await User.findOne({ referralCode: incomingReferralCode });
       if (referrer) referredBy = referrer._id;
     }
 
@@ -132,7 +125,8 @@ exports.registerUser = async (req, res, next) => {
       password,
       phone: phone ? phone.trim() : null,
       role,
-      servicePreference: isClientTrack ? servicePreference : null,
+      // ✅ Only set for CLIENT — chosen on screen 2 (MEN/WOMEN)
+      servicePreference: isClientTrack ? (servicePreference || null) : null,
       referralCode: isClientTrack ? newReferralCode : null,
       referredBy: isClientTrack ? referredBy : null,
       storeId: null,
@@ -150,6 +144,7 @@ exports.registerUser = async (req, res, next) => {
       userId: newUser._id,
       role: newUser.role,
       track: isClientTrack ? "CLIENT" : "BUSINESS",
+      servicePreference: newUser.servicePreference, // ✅ returned to frontend
       referralCode: isClientTrack ? newReferralCode : null,
     });
   } catch (err) {
@@ -163,9 +158,7 @@ exports.loginUser = async (req, res, next) => {
     const { email, phone, password } = req.body;
 
     if (!email && !phone)
-      return res
-        .status(400)
-        .json({ message: "Email or phone number is required" });
+      return res.status(400).json({ message: "Email or phone number is required" });
 
     const orConditions = [];
     if (email) orConditions.push({ email: email.toLowerCase().trim() });
@@ -185,9 +178,10 @@ exports.loginUser = async (req, res, next) => {
       refreshToken,
       role: user.role,
       userId: user._id,
-      name: user.username,
+      username: user.username,
       storeId: user.storeId || null,
       track: CLIENT_ROLES.includes(user.role) ? "CLIENT" : "BUSINESS",
+      servicePreference: user.servicePreference, // ✅ returned so app knows MEN/WOMEN
     });
   } catch (err) {
     next(err);
@@ -197,15 +191,14 @@ exports.loginUser = async (req, res, next) => {
 // ─── SOCIAL LOGIN ─────────────────────────────────────────────────────────────
 const handleSocialLogin = async (req, res, next, provider) => {
   try {
-    const { email, name, socialId } = req.body;
+    const { email, name, socialId, servicePreference } = req.body;
     if (!email || !name || !socialId)
-      return res
-        .status(400)
-        .json({ message: "email, name and socialId are required" });
+      return res.status(400).json({ message: "email, name and socialId are required" });
 
     let user = await User.findOne({ email });
 
     if (!user) {
+      // ✅ New social user — create with servicePreference from onboarding
       user = new User({
         username: name,
         email,
@@ -214,6 +207,7 @@ const handleSocialLogin = async (req, res, next, provider) => {
         facebookId: provider === "facebook" ? socialId : null,
         socialProvider: provider,
         role: "CLIENT",
+        servicePreference: servicePreference || null, // ✅ from screen 2
       });
       await user.save();
     }
@@ -227,8 +221,9 @@ const handleSocialLogin = async (req, res, next, provider) => {
       refreshToken,
       userId: user._id,
       role: user.role,
-      name: user.username,
+      username: user.username,
       track: "CLIENT",
+      servicePreference: user.servicePreference, // ✅ returned
     });
   } catch (err) {
     next(err);
@@ -367,19 +362,66 @@ exports.updatePassword = async (req, res, next) => {
   try {
     const { currentPassword, newPassword } = req.body;
     if (!currentPassword || !newPassword)
-      return res
-        .status(400)
-        .json({ message: "Current and new password required" });
+      return res.status(400).json({ message: "Current and new password required" });
 
     const user = await User.findById(req.user.id).select("+password");
     if (!user || !(await user.comparePassword(currentPassword)))
-      return res
-        .status(400)
-        .json({ message: "Current password is incorrect" });
+      return res.status(400).json({ message: "Current password is incorrect" });
 
     user.password = newPassword;
     await user.save();
     res.json({ message: "Password updated successfully" });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── FAVORITES ────────────────────────────────────────────────────────────────
+exports.getFavorites = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user.id)
+      .select("favorites")
+      .populate({
+        path: "favorites",
+        select: "storeName storeType logo rating numReviews services location",
+      });
+
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    res.json({
+      message: "Favorites retrieved",
+      favorites: user.favorites || [],
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.toggleFavorite = async (req, res, next) => {
+  try {
+    const { storeId } = req.params;
+
+    const user = await User.findById(req.user.id).select("favorites");
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const isFavorited = user.favorites.map(String).includes(String(storeId));
+
+    if (isFavorited) {
+      // ✅ Remove from favorites
+      user.favorites = user.favorites.filter(
+        (id) => String(id) !== String(storeId)
+      );
+    } else {
+      // ✅ Add to favorites
+      user.favorites.push(storeId);
+    }
+
+    await user.save();
+
+    res.json({
+      message: isFavorited ? "Removed from favorites" : "Added to favorites",
+      isFavorited: !isFavorited,
+    });
   } catch (err) {
     next(err);
   }
@@ -391,9 +433,7 @@ exports.forgotPassword = async (req, res, next) => {
     const { email, phone } = req.body;
 
     if (!email && !phone)
-      return res
-        .status(400)
-        .json({ message: "Email or phone number is required" });
+      return res.status(400).json({ message: "Email or phone number is required" });
 
     const orConditions = [];
     if (email) orConditions.push({ email: email.toLowerCase().trim() });
@@ -403,7 +443,6 @@ exports.forgotPassword = async (req, res, next) => {
     if (!user) return res.status(404).json({ message: "No account found" });
 
     await sendOtp(user);
-
     res.json({ message: "OTP sent successfully" });
   } catch (err) {
     next(err);
@@ -416,9 +455,7 @@ exports.verifyOtp = async (req, res, next) => {
     const { email, phone, otp } = req.body;
 
     if (!email && !phone)
-      return res
-        .status(400)
-        .json({ message: "Email or phone number is required" });
+      return res.status(400).json({ message: "Email or phone number is required" });
 
     const orConditions = [];
     if (email) orConditions.push({ email: email.toLowerCase().trim() });
@@ -445,9 +482,7 @@ exports.resetPassword = async (req, res, next) => {
     const { email, phone, otp, newPassword } = req.body;
 
     if (!email && !phone)
-      return res
-        .status(400)
-        .json({ message: "Email or phone number is required" });
+      return res.status(400).json({ message: "Email or phone number is required" });
 
     const orConditions = [];
     if (email) orConditions.push({ email: email.toLowerCase().trim() });
@@ -479,9 +514,7 @@ exports.resendOtp = async (req, res, next) => {
     const { email, phone } = req.body;
 
     if (!email && !phone)
-      return res
-        .status(400)
-        .json({ message: "Email or phone number is required" });
+      return res.status(400).json({ message: "Email or phone number is required" });
 
     const orConditions = [];
     if (email) orConditions.push({ email: email.toLowerCase().trim() });
@@ -491,7 +524,6 @@ exports.resendOtp = async (req, res, next) => {
     if (!user) return res.status(404).json({ message: "User not found" });
 
     await sendOtp(user);
-
     res.json({ message: "New OTP sent successfully" });
   } catch (err) {
     next(err);
