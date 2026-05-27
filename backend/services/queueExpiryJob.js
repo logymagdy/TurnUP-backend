@@ -1,7 +1,10 @@
 const Appointment = require("../models/appointmentModel");
 const Store = require("../models/storeModel");
 const User = require("../models/userModel");
-const { sendNotification, sendQueueNotification } = require("./notificationServices");
+const {
+  sendNotification,
+  sendQueueNotification,
+} = require("./notificationServices");
 const { calculateLiveQueue } = require("./queueService");
 const { emitFullQueueRefresh } = require("./queueSocket");
 
@@ -36,7 +39,7 @@ const runQueueExpiryJob = async (io = null) => {
         "THIRTY_MINS_LEFT"
       );
 
-      // ✅ Emit countdown to client's socket room
+      // ✅ Emit countdown to client socket room
       if (io) {
         io.to(String(appointment.client)).emit("expiryCountdown", {
           appointmentId: appointment._id,
@@ -95,13 +98,11 @@ const runQueueExpiryJob = async (io = null) => {
     }
 
     // ── 3. Send "you're next" notifications ───────────────────────────
-    // Find appointments where estimated start time is within 5 mins
     const fiveMinWindow = new Date(now.getTime() + 5 * 60 * 1000);
     const youreNextAppointments = await Appointment.find({
       date: today,
-      status: "CONFIRMED",
+      status: { $in: ["CONFIRMED", "CHECKED_IN"] },
       estimatedStartTime: { $gte: now, $lte: fiveMinWindow },
-      checkedIn: false,
       youreNextSent: { $ne: true },
     });
 
@@ -126,7 +127,6 @@ const runQueueExpiryJob = async (io = null) => {
         });
       }
 
-      // Mark as sent to avoid duplicate
       await Appointment.findByIdAndUpdate(appointment._id, {
         youreNextSent: true,
       });
@@ -158,7 +158,7 @@ const runQueueExpiryJob = async (io = null) => {
       await sendNotification(
         appointment.client,
         "TURN_EXPIRED",
-        `Your turn at ${store?.storeName} has expired. A penalty of ${penalty} EGP has been applied.`,
+        `Your turn at ${store?.storeName} has expired. Penalty of ${penalty} EGP applied.`,
         "Turn Expired",
         appointment._id,
         "APPOINTMENT"
