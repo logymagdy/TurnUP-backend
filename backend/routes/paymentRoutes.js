@@ -1,29 +1,30 @@
 const express = require("express");
 const router = express.Router();
 // #swagger.tags = ['Payments']
+
 const {
   initiatePayment,
   paymobWebhook,
-  confirmCashPayment,
-  confirmCashCollected,
+  payAtStore,
+  confirmPayAtStoreCollected,
   getMyPayments,
 } = require("../controllers/paymentController");
 const { protect, allowRoles } = require("../middleware/authMiddleware");
 
-// ─── CLIENT ROUTES ────────────────────────────────────────────────────────────
+// ─── CLIENT ───────────────────────────────────────────────────────────────────
 router.post("/initiate", protect, allowRoles("CLIENT"), initiatePayment);
-router.post("/cash", protect, allowRoles("CLIENT"), confirmCashPayment);
+router.post("/pay-at-store", protect, allowRoles("CLIENT"), payAtStore);
 router.get("/my-payments", protect, allowRoles("CLIENT"), getMyPayments);
 
-// ─── RECEPTIONIST ROUTES ──────────────────────────────────────────────────────
+// ─── RECEPTIONIST ─────────────────────────────────────────────────────────────
 router.put(
-  "/:appointmentId/cash-collected",
+  "/:appointmentId/collected",
   protect,
   allowRoles("RECEPTIONIST"),
-  confirmCashCollected
+  confirmPayAtStoreCollected
 );
 
-// ─── PAYMOB WEBHOOK — no auth, HMAC verified inside controller ────────────────
+// ─── PAYMOB WEBHOOK — no auth, HMAC verified ──────────────────────────────────
 router.post("/webhook/paymob", paymobWebhook);
 
 module.exports = router;
