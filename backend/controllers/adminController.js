@@ -1,9 +1,16 @@
 const Store = require("../models/storeModel");
 const User = require("../models/userModel");
+const Payment = require("../models/paymentModel");
+const Appointment = require("../models/appointmentModel");
+const Complaint = require("../models/complaintModel");
+const mongoose = require("mongoose");
 const { sendNotification } = require("../services/notificationServices");
 
 const ALLOWED_STORE_TYPES = ["barbershop", "beautySalon"];
+const SUBSCRIPTION_AMOUNT = 1500;
+const GRACE_PERIOD_DAYS = 14;
 
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
 const validateStoreForApproval = (store) => {
   const errors = [];
   if (!store.storeName || store.storeName.trim() === "")
@@ -27,6 +34,7 @@ const validateStoreForApproval = (store) => {
   return errors;
 };
 
+// ─── STORE APPROVAL ───────────────────────────────────────────────────────────
 exports.approveStore = async (req, res) => {
   try {
     const { storeId, action, reason } = req.body;
@@ -62,12 +70,24 @@ exports.approveStore = async (req, res) => {
     if (action === "REJECTED") {
       if (!reason || reason.trim() === "")
         return res.status(400).json({ message: "A rejection reason is required." });
+
       store.approvalStatus = "REJECTED";
       store.rejectionReason = reason.trim();
       await store.save();
+
+      await sendNotification(
+        store.owner,
+        "STORE_SUSPENDED",
+        `Your store registration was rejected. Reason: ${reason}. Please fix the issues and reapply.`,
+        "Store Registration Rejected",
+        store._id,
+        "STORE"
+      );
+
       return res.status(200).json({ message: "Store rejected.", store });
     }
 
+    // ── APPROVED ──────────────────────────────────────────────────────
     store.approvalStatus = "APPROVED";
     store.rejectionReason = null;
     store.operationalStatus = "ACTIVE";
@@ -78,9 +98,23 @@ exports.approveStore = async (req, res) => {
     trialEnd.setMonth(trialEnd.getMonth() + 2);
     store.trialStartDate = trialStart;
     store.trialEndDate = trialEnd;
+    store.nextPaymentDate = new Date(trialEnd);
+
     await store.save();
 
-    return res.status(200).json({ message: "Store approved. 2-month free trial started.", store });
+    await sendNotification(
+      store.owner,
+      "BOOKING_CONFIRMED",
+      `Congratulations! Your store has been approved. Your 2-month free trial starts today and ends on ${trialEnd.toDateString()}.`,
+      "Store Approved",
+      store._id,
+      "STORE"
+    );
+
+    return res.status(200).json({
+      message: "Store approved. 2-month free trial started.",
+      store,
+    });
   } catch (err) {
     return res.status(500).json({ message: err.message });
   }
@@ -98,6 +132,7 @@ exports.getPendingStores = async (req, res) => {
   }
 };
 
+// ─── STORE MODERATION ─────────────────────────────────────────────────────────
 exports.moderateStore = async (req, res) => {
   try {
     const { storeId } = req.params;
@@ -106,7 +141,9 @@ exports.moderateStore = async (req, res) => {
     const validActions = ["WARNED", "UNDER_INVESTIGATION", "SUSPENDED", "BANNED", "REACTIVATED"];
 
     if (!validActions.includes(action))
-      return res.status(400).json({ message: `Invalid action. Must be one of: ${validActions.join(", ")}.` });
+      return res.status(400).json({
+        message: `Invalid action. Must be one of: ${validActions.join(", ")}.`,
+      });
 
     if (!reason || reason.trim() === "")
       return res.status(400).json({ message: "A reason is required for all moderation actions." });
@@ -128,7 +165,7 @@ exports.moderateStore = async (req, res) => {
           newStatus = "SUSPENDED";
           store.operationalStatus = "SUSPENDED";
           const endsAt = new Date();
-          endsAt.setDate(endsAt.getDate() + 7);
+          endsAt.setDate(endsAt.getDate() + GRACE_PERIOD_DAYS);
           store.suspensionEndsAt = endsAt;
           suspensionEndsAt = endsAt;
         }
@@ -179,7 +216,7 @@ exports.moderateStore = async (req, res) => {
     await store.save();
 
     const messageMap = {
-      WARNED: `Your store has received a warning (${store.warningCount}/3). Reason: ${reason}`,
+      WARNED: `Your store has received a warning (${store.warningCount}/3). Reason: ${reason}${store.warningCount >= 3 ? ` — Your store has been suspended for ${GRACE_PERIOD_DAYS} days.` : ""}`,
       UNDER_INVESTIGATION: `Your store is under investigation. Reason: ${reason}`,
       SUSPENDED: `Your store has been suspended for ${suspensionDays} day(s). Reason: ${reason}`,
       BANNED: `Your store has been permanently banned. Reason: ${reason}`,
@@ -222,6 +259,229 @@ exports.getModerationLog = async (req, res) => {
       operationalStatus: store.operationalStatus,
       warningCount: store.warningCount,
       moderationLog: store.moderationLog,
+    });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+// ─── SUBSCRIPTION MANAGEMENT ──────────────────────────────────────────────────
+exports.getSubscriptionOverview = async (req, res) => {
+  try {
+    const now = new Date();
+
+    const [trial, active, expired, suspended] = await Promise.all([
+      Store.countDocuments({ approvalStatus: "APPROVED", subscriptionStatus: "TRIAL" }),
+      Store.countDocuments({ approvalStatus: "APPROVED", subscriptionStatus: "ACTIVE" }),
+      Store.countDocuments({ approvalStatus: "APPROVED", subscriptionStatus: "EXPIRED" }),
+      Store.countDocuments({ approvalStatus: "APPROVED", operationalStatus: "SUSPENDED" }),
+    ]);
+
+    const trialEndingSoon = await Store.find({
+      approvalStatus: "APPROVED",
+      subscriptionStatus: "TRIAL",
+      trialEndDate: {
+        $gte: now,
+        $lte: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
+      },
+    })
+      .select("storeName owner trialEndDate")
+      .populate("owner", "username email");
+
+    const inGracePeriod = await Store.find({
+      approvalStatus: "APPROVED",
+      subscriptionStatus: "EXPIRED",
+      gracePeriodEndsAt: { $gte: now },
+    })
+      .select("storeName owner gracePeriodEndsAt nextPaymentDate")
+      .populate("owner", "username email");
+
+    const totalSubscriptionRevenue = await Payment.aggregate([
+      { $match: { type: "SUBSCRIPTION", status: "COMPLETED" } },
+      { $group: { _id: null, total: { $sum: "$amount" } } },
+    ]);
+
+    return res.status(200).json({
+      summary: { trial, active, expired, suspended },
+      trialEndingSoon,
+      inGracePeriod,
+      totalSubscriptionRevenue: totalSubscriptionRevenue[0]?.total || 0,
+      subscriptionAmount: SUBSCRIPTION_AMOUNT,
+    });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+exports.manuallyChargeSubscription = async (req, res) => {
+  try {
+    const { storeId } = req.params;
+
+    const store = await Store.findById(storeId).populate("owner", "username email");
+    if (!store) return res.status(404).json({ message: "Store not found." });
+
+    if (store.subscriptionStatus === "TRIAL")
+      return res.status(400).json({ message: "Store is still in trial period." });
+
+    await Payment.create({
+      storeId: store._id,
+      amount: SUBSCRIPTION_AMOUNT,
+      adminCut: SUBSCRIPTION_AMOUNT,
+      storeCut: 0,
+      type: "SUBSCRIPTION",
+      method: "CARD",
+      status: "COMPLETED",
+      notes: `Manual subscription charge by ADMIN for ${store.storeName}`,
+    });
+
+    store.subscriptionStatus = "ACTIVE";
+    store.lastPaymentDate = new Date();
+    const nextPayment = new Date();
+    nextPayment.setMonth(nextPayment.getMonth() + 1);
+    store.nextPaymentDate = nextPayment;
+    store.gracePeriodEndsAt = null;
+
+    if (store.operationalStatus === "SUSPENDED") {
+      store.operationalStatus = "ACTIVE";
+      store.suspensionEndsAt = null;
+    }
+
+    await store.save();
+
+    await sendNotification(
+      store.owner,
+      "SUBSCRIPTION_DUE",
+      `Your subscription payment of ${SUBSCRIPTION_AMOUNT} EGP has been processed. Your store is now active.`,
+      "Subscription Payment Processed",
+      store._id,
+      "STORE"
+    );
+
+    return res.status(200).json({
+      message: "Subscription charged successfully. Store reactivated.",
+      nextPaymentDate: store.nextPaymentDate,
+    });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+// ─── ADMIN ANALYTICS DASHBOARD ────────────────────────────────────────────────
+exports.getAdminDashboard = async (req, res) => {
+  try {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+
+    const [
+      totalStores, pendingStores, activeStores, suspendedStores,
+      bannedStores, newStoresThisMonth, newStoresLastMonth,
+    ] = await Promise.all([
+      Store.countDocuments({ approvalStatus: "APPROVED" }),
+      Store.countDocuments({ approvalStatus: "PENDING" }),
+      Store.countDocuments({ approvalStatus: "APPROVED", operationalStatus: "ACTIVE" }),
+      Store.countDocuments({ approvalStatus: "APPROVED", operationalStatus: "SUSPENDED" }),
+      Store.countDocuments({ approvalStatus: "APPROVED", operationalStatus: "BANNED" }),
+      Store.countDocuments({ approvalStatus: "APPROVED", createdAt: { $gte: startOfMonth } }),
+      Store.countDocuments({ approvalStatus: "APPROVED", createdAt: { $gte: startOfLastMonth, $lte: endOfLastMonth } }),
+    ]);
+
+    const [
+      totalClients, totalProviders, newUsersThisMonth, newUsersLastMonth,
+    ] = await Promise.all([
+      User.countDocuments({ role: "CLIENT" }),
+      User.countDocuments({ role: "serviceProvider" }),
+      User.countDocuments({ createdAt: { $gte: startOfMonth } }),
+      User.countDocuments({ createdAt: { $gte: startOfLastMonth, $lte: endOfLastMonth } }),
+    ]);
+
+    const [
+      totalRevenueResult, adminCommissionResult,
+      subscriptionRevenueResult, revenueThisMonth, revenueLastMonth,
+    ] = await Promise.all([
+      Payment.aggregate([{ $match: { status: "COMPLETED", type: { $ne: "REFUND" } } }, { $group: { _id: null, total: { $sum: "$amount" } } }]),
+      Payment.aggregate([{ $match: { status: "COMPLETED", type: "SERVICE" } }, { $group: { _id: null, total: { $sum: "$adminCut" } } }]),
+      Payment.aggregate([{ $match: { status: "COMPLETED", type: "SUBSCRIPTION" } }, { $group: { _id: null, total: { $sum: "$amount" } } }]),
+      Payment.aggregate([{ $match: { status: "COMPLETED", type: { $ne: "REFUND" }, createdAt: { $gte: startOfMonth } } }, { $group: { _id: null, total: { $sum: "$amount" } } }]),
+      Payment.aggregate([{ $match: { status: "COMPLETED", type: { $ne: "REFUND" }, createdAt: { $gte: startOfLastMonth, $lte: endOfLastMonth } } }, { $group: { _id: null, total: { $sum: "$amount" } } }]),
+    ]);
+
+    const [
+      totalComplaints, pendingComplaints, inReviewComplaints, resolvedComplaints,
+    ] = await Promise.all([
+      Complaint.countDocuments({}),
+      Complaint.countDocuments({ status: "SUBMITTED" }),
+      Complaint.countDocuments({ status: "IN_REVIEW" }),
+      Complaint.countDocuments({ status: "RESOLVED" }),
+    ]);
+
+    const [totalBookings, completedBookings, noShowBookings, cancelledBookings] = await Promise.all([
+      Appointment.countDocuments({}),
+      Appointment.countDocuments({ status: "DONE" }),
+      Appointment.countDocuments({ status: "NO_SHOW" }),
+      Appointment.countDocuments({ status: "CANCELLED" }),
+    ]);
+
+    const storeGrowth = newStoresLastMonth > 0
+      ? Math.round(((newStoresThisMonth - newStoresLastMonth) / newStoresLastMonth) * 100)
+      : 100;
+
+    const userGrowth = newUsersLastMonth > 0
+      ? Math.round(((newUsersThisMonth - newUsersLastMonth) / newUsersLastMonth) * 100)
+      : 100;
+
+    const revenueThisMonthVal = revenueThisMonth[0]?.total || 0;
+    const revenueLastMonthVal = revenueLastMonth[0]?.total || 0;
+    const revenueGrowth = revenueLastMonthVal > 0
+      ? Math.round(((revenueThisMonthVal - revenueLastMonthVal) / revenueLastMonthVal) * 100)
+      : 100;
+
+    const suspendedStoresList = await Store.find({
+      approvalStatus: "APPROVED",
+      operationalStatus: { $in: ["SUSPENDED", "BANNED"] },
+    })
+      .select("storeName storeType operationalStatus warningCount suspensionEndsAt")
+      .populate("owner", "username email phone")
+      .sort({ updatedAt: -1 });
+
+    return res.status(200).json({
+      stores: {
+        total: totalStores,
+        pending: pendingStores,
+        active: activeStores,
+        suspended: suspendedStores,
+        banned: bannedStores,
+        newThisMonth: newStoresThisMonth,
+        growthPercent: storeGrowth,
+      },
+      users: {
+        totalClients,
+        totalProviders,
+        newThisMonth: newUsersThisMonth,
+        growthPercent: userGrowth,
+      },
+      revenue: {
+        totalAllTime: totalRevenueResult[0]?.total || 0,
+        thisMonth: revenueThisMonthVal,
+        lastMonth: revenueLastMonthVal,
+        growthPercent: revenueGrowth,
+        adminCommission: adminCommissionResult[0]?.total || 0,
+        subscriptionRevenue: subscriptionRevenueResult[0]?.total || 0,
+      },
+      complaints: {
+        total: totalComplaints,
+        pending: pendingComplaints,
+        inReview: inReviewComplaints,
+        resolved: resolvedComplaints,
+      },
+      bookings: {
+        total: totalBookings,
+        completed: completedBookings,
+        noShow: noShowBookings,
+        cancelled: cancelledBookings,
+      },
+      suspendedStoresList,
     });
   } catch (err) {
     return res.status(500).json({ message: err.message });
