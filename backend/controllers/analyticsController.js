@@ -117,12 +117,25 @@ exports.getStoreAnalytics = async (req, res) => {
       };
     });
 
+    // ── Monthly Goal progress ──────────────────────────────────────────
+    const storeForGoal = await Store.findById(storeId).select("monthlyRevenueGoal");
+    const monthlyGoal = storeForGoal?.monthlyRevenueGoal || 0;
+    const monthlyRevenue = monthlyRevenueResult[0]?.total || 0;
+    const monthlyGoalProgress = monthlyGoal > 0
+      ? Math.min(100, Math.round((monthlyRevenue / monthlyGoal) * 100))
+      : 0;
+
     return res.status(200).json({
       revenue: {
         total: totalRevenueResult[0]?.total || 0,
         today: dailyRevenueResult[0]?.total || 0,
-        thisMonth: monthlyRevenueResult[0]?.total || 0,
+        thisMonth: monthlyRevenue,
         commissionDeducted: commissionDeducted[0]?.total || 0,
+      },
+      monthlyGoal: {
+        target: monthlyGoal,
+        achieved: monthlyRevenue,
+        progressPercent: monthlyGoalProgress,
       },
       bookings: {
         total: totalBookings,
