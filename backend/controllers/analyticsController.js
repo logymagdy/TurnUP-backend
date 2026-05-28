@@ -167,9 +167,6 @@ exports.getBusinessDashboard = async (req, res) => {
     startOfWeek.setDate(now.getDate() - dayOfWeek);
     startOfWeek.setHours(0, 0, 0, 0);
 
-    const endOfWeek = new Date(startOfWeek);
-    endOfWeek.setDate(startOfWeek.getDate() + 6);
-    endOfWeek.setHours(23, 59, 59, 999);
 
     // ── 1. Store info ─────────────────────────────────────────────────────────
     const store = await Store.findById(storeId).select(
