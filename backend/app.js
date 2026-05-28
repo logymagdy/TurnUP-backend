@@ -62,7 +62,13 @@ app.use(express.urlencoded({ extended: true, limit: "10kb" }));
 // ✅ 4. NoSQL injection sanitization
 // Strips $ and . from request body, query, params
 // Prevents MongoDB operator injection attacks
-app.use(mongoSanitize());
+app.use(mongoSanitize({
+  allowDots: true,
+  replaceWith: '_',
+  onSanitize: ({ req, key }) => {
+    console.warn(`Sanitized: ${key}`);
+  }
+}));
 
 // ─── RATE LIMITERS ────────────────────────────────────────────────────────────
 
