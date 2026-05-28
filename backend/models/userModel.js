@@ -14,7 +14,6 @@ const userSchema = new mongoose.Schema(
     password: {
       type: String,
       required: false,
-      // ✅ Minimum 8 characters enforced
       minlength: [8, "Password must be at least 8 characters"],
       select: false,
     },
@@ -81,6 +80,8 @@ const userSchema = new mongoose.Schema(
       type: { type: String, enum: ["Point"], default: "Point" },
       coordinates: { type: [Number], default: [31.2357, 30.0444] },
     },
+
+    // ── CLIENT notification settings ─────────────────────────────────────
     notificationSettings: {
       general: { type: Boolean, default: true },
       sound: { type: Boolean, default: true },
@@ -94,6 +95,22 @@ const userSchema = new mongoose.Schema(
         newBooking: { type: Boolean, default: true },
         cancellation: { type: Boolean, default: true },
       },
+    },
+
+    // ── BUSINESS (serviceProvider + RECEPTIONIST) notification settings ───
+    // Separate from client settings — controls business-side alerts
+    businessNotificationSettings: {
+      // Booking alerts
+      newBooking: { type: Boolean, default: true },
+      bookingCancellation: { type: Boolean, default: true },
+      noShowAlert: { type: Boolean, default: true },
+      // Queue alerts
+      newWalkIn: { type: Boolean, default: true },
+      queueDelay: { type: Boolean, default: true },
+      // Channels
+      pushNotifications: { type: Boolean, default: true },
+      smsNotifications: { type: Boolean, default: true },
+      emailNotifications: { type: Boolean, default: false },
     },
   },
   { timestamps: true }
