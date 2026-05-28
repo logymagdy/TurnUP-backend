@@ -48,17 +48,11 @@ exports.getStoreAnalytics = async (req, res) => {
       ? Math.round((noShowBookings / totalBookings) * 100)
       : 0;
 
-    const bookingTypeStats = await Appointment.aggregate([
-      { $match: { storeId } },
-      { $group: { _id: "$bookingType", count: { $sum: 1 } } },
+    // ✅ Use isWalkIn field — bookingType NORMAL ≠ walk-in
+    const [walkInCount, onlineCount] = await Promise.all([
+      Appointment.countDocuments({ storeId, isWalkIn: true }),
+      Appointment.countDocuments({ storeId, isWalkIn: false }),
     ]);
-
-    let walkInCount = 0;
-    let onlineCount = 0;
-    bookingTypeStats.forEach((stat) => {
-      if (stat._id === "NORMAL") walkInCount = stat.count;
-      else onlineCount += stat.count;
-    });
 
     const walkInPercentage = totalBookings > 0
       ? Math.round((walkInCount / totalBookings) * 100)
