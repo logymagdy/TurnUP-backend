@@ -1,65 +1,45 @@
 const mongoose = require("mongoose");
 
-const serviceSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  price: { type: Number, required: true },
-  durationMin: { type: Number, required: true },
-  durationMax: { type: Number, required: true },
-  description: { type: String, default: null },
-  image: { type: String, default: null },       // ✅ service image
-  category: { type: String, default: null },    // ✅ Hair, Nails, Facial etc
-  discountPercent: { type: Number, default: 0 }, // ✅ discount badge
-  isActive: { type: Boolean, default: true },
-});
-
-// ✅ Package schema — bundles of services at fixed price
-const packageSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  description: { type: String, default: null },
-  services: [{ type: String }],  // list of service names included
-  price: { type: Number, required: true },
-  image: { type: String, default: null },
-  isActive: { type: Boolean, default: true },
-});
-
-const seatSchema = new mongoose.Schema({
-  seatNumber: { type: Number, required: true },
-  isOccupied: { type: Boolean, default: false },
-  currentEntryId: { type: mongoose.Schema.Types.ObjectId, default: null },
-});
-
-const moderationLogSchema = new mongoose.Schema(
+const serviceSchema = new mongoose.Schema(
   {
-    adminId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: true,
-    },
-    action: {
-      type: String,
-      enum: [
-        "WARNED",
-        "UNDER_INVESTIGATION",
-        "SUSPENDED",
-        "BANNED",
-        "REACTIVATED",
-        "COMPLAINT_REVIEWED",
-      ],
-      required: true,
-    },
-    reason: { type: String, required: true },
-    previousStatus: { type: String, required: true },
-    newStatus: { type: String, required: true },
-    suspensionDays: { type: Number, default: null },
-    suspensionEndsAt: { type: Date, default: null },
-    complaintId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Complaint",
-      default: null,
-    },
-    resolution: { type: String, default: null },
+    name: { type: String, required: true },
+    photo: { type: String, default: null },
+    durationMinutes: { type: Number, required: true }, // ✅ single avg duration
+    price: { type: Number, required: true },
+    discountPercent: { type: Number, default: 0 }, // ✅ shown to clients
+    description: { type: String, default: null },
+    isActive: { type: Boolean, default: true },
   },
-  { timestamps: true }
+  { _id: true }
+);
+
+const stylistSchema = new mongoose.Schema(
+  {
+    fullName: { type: String, required: true },
+    photo: { type: String, default: null },
+    age: { type: Number, default: null },
+    role: { type: String, default: null }, // e.g Senior Barber
+    assignedServices: [{ type: String }], // service names they do
+    payoutAccount: { type: String, default: null }, // InstaPay/Wallet string
+    rating: { type: Number, default: 0 },
+    reviewCount: { type: Number, default: 0 },
+  },
+  { _id: true }
+);
+
+const loyaltyProgramSchema = new mongoose.Schema(
+  {
+    enabled: { type: Boolean, default: false },
+    pointsPerVisit: { type: Number, default: 10 },
+    pointsPerEGP: { type: Number, default: 1 },
+    maxDiscountPercent: { type: Number, default: 50 },
+    referralReward: { type: Number, default: 20 },
+    cancellationCompensation: { type: Number, default: 50 },
+    onlinePaymentBonus: { type: Number, default: 10 },
+    vipThreshold: { type: Number, default: 1000 },
+    pointsExpiryMonths: { type: Number, default: 6 },
+  },
+  { _id: false }
 );
 
 const storeSchema = new mongoose.Schema(
@@ -69,133 +49,116 @@ const storeSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
-    storeName: {
-      type: String,
-      required: [true, "Store name is required"],
-      trim: true,
-    },
+
+    // ── Step 1 ────────────────────────────────────────────────────────────
+    storeName: { type: String, required: true },
+    logo: { type: String, default: null },
     storeType: {
       type: String,
       enum: ["barbershop", "beautySalon"],
       required: true,
     },
-    location: { type: String, required: [true, "Location is required"] },
-    phone: { type: String, default: null },
-    logo: { type: String, default: null },
     bio: { type: String, default: null },
+    location: { type: String, default: null },
+    coordinates: {
+      lat: { type: Number, default: null },
+      lng: { type: Number, default: null },
+    },
 
-    // ✅ Gallery images
+    // ── Step 2 ────────────────────────────────────────────────────────────
     gallery: [{ type: String }],
+    businessLicense: { type: String, default: null },
 
-    // ✅ View count
-    viewCount: { type: Number, default: 0 },
-
-    services: [serviceSchema],
-    packages: [packageSchema],  // ✅ store packages
-    seats: [seatSchema],
-
-    isWorkDayActive: { type: Boolean, default: false },
-    isOpen: { type: Boolean, default: false },
-    isPaused: { type: Boolean, default: false },
-
+    // ── Step 3 ────────────────────────────────────────────────────────────
     workingHours: {
-      days: [{ type: String }],
+      days: [{ type: String }], // ["Monday","Tuesday",...]
       opening: { type: String, default: "09:00" },
       closing: { type: String, default: "21:00" },
     },
-
     settings: {
       acceptWalkIns: { type: Boolean, default: true },
       acceptOnlineBookings: { type: Boolean, default: true },
       autoAssignStaff: { type: Boolean, default: true },
-      showWaitTime: { type: Boolean, default: true },
-      manualQueueControl: { type: Boolean, default: false },
-      maxGroupSize: { type: Number, default: 7 },
+      showEstimatedWaitTime: { type: Boolean, default: true },
       queueExpiryMinutes: { type: Number, default: 30 },
       noShowPenalty: { type: Number, default: 15 },
+      maxGroupSize: { type: Number, default: 7 },
+    },
+    socialPresence: {
+      instagramUsername: { type: String, default: null },
+      followersCount: { type: Number, default: 0 },
+    },
+    phone: { type: String, default: null },
+
+    // ── Step 4 ────────────────────────────────────────────────────────────
+    services: { type: [serviceSchema], default: [] },
+
+    // ── Step 5 ────────────────────────────────────────────────────────────
+    // ✅ Stylists stored inside store — shown to clients
+    stylists: { type: [stylistSchema], default: [] },
+
+    // ── Step 6 (coming later) ─────────────────────────────────────────────
+    // bookingRules will be added when step 6 is pasted
+
+    // ── Step 7 ────────────────────────────────────────────────────────────
+    loyaltyProgram: { type: loyaltyProgramSchema, default: () => ({}) },
+
+    // ── Step 8 (coming later) ─────────────────────────────────────────────
+    acceptedPaymentMethods: {
+      cash: { type: Boolean, default: true },
+      card: { type: Boolean, default: true },
     },
 
-    loyaltyProgram: {
-      enabled: { type: Boolean, default: false },
-      pointsPerVisit: { type: Number, default: 0 },
-      redemptionRules: [
-        {
-          pointsNeeded: Number,
-          rewardType: String,
-          value: Number,
-        },
-      ],
+    // ── Step 9 ────────────────────────────────────────────────────────────
+    subscriptionStatus: {
+      type: String,
+      enum: ["TRIAL", "SUBSCRIBED", "EXPIRED"],
+      default: "TRIAL",
     },
+    trialStartDate: { type: Date, default: Date.now },
+    trialEndsAt: {
+      type: Date,
+      default: () => new Date(Date.now() + 60 * 24 * 60 * 60 * 1000), // 2 months
+    },
+    subscribedAt: { type: Date, default: null },
 
-    rating: { type: Number, default: 0 },
-    numReviews: { type: Number, default: 0 },
-    receptionists: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
-    stylists: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+    // ── Receptionist ──────────────────────────────────────────────────────
+    receptionists: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
 
+    // ── Status & Approval ─────────────────────────────────────────────────
     approvalStatus: {
       type: String,
       enum: ["PENDING", "APPROVED", "REJECTED"],
       default: "PENDING",
     },
     rejectionReason: { type: String, default: null },
-    approvalDocuments: {
-      businessLicense: { type: String, default: null },
-      shopPhotos: [{ type: String }],
-      ownerIdPhoto: { type: String, default: null },
-      address: { type: String, default: null },
-    },
-
     operationalStatus: {
       type: String,
-      enum: ["ACTIVE", "UNDER_INVESTIGATION", "SUSPENDED", "BANNED"],
+      enum: ["ACTIVE", "SUSPENDED", "BANNED", "UNDER_INVESTIGATION"],
       default: "ACTIVE",
     },
-    suspensionEndsAt: { type: Date, default: null },
+    isOpen: { type: Boolean, default: false },
+    isPaused: { type: Boolean, default: false },
+    isWorkDayActive: { type: Boolean, default: false },
+
+    // ── Stats ─────────────────────────────────────────────────────────────
+    rating: { type: Number, default: 0 },
+    numReviews: { type: Number, default: 0 },
+    viewCount: { type: Number, default: 0 },
     warningCount: { type: Number, default: 0 },
-    moderationLog: [moderationLogSchema],
-
-    status: {
-      type: String,
-      enum: ["ACTIVE", "SUSPENDED"],
-      default: "ACTIVE",
-    },
-
-    subscriptionStatus: {
-      type: String,
-      enum: ["TRIAL", "ACTIVE", "EXPIRED"],
-      default: "TRIAL",
-    },
-    trialStartDate: { type: Date, default: null },
-    trialEndDate: { type: Date, default: null },
-    lastPaymentDate: { type: Date, default: null },
-    nextPaymentDate: { type: Date, default: null },
-    gracePeriodEndsAt: { type: Date, default: null },
-
-    paymentSetup: {
-      acceptedMethods: [{ type: String }],
-      payoutInfo: {
-        accountHolderName: String,
-        bankAccountName: String,
-        iban: String,
+    moderationLog: [
+      {
+        action: String,
+        reason: String,
+        date: { type: Date, default: Date.now },
+        adminId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
       },
-    },
-    depositType: {
-      type: String,
-      enum: ["FIXED", "PERCENTAGE", "NONE"],
-      default: "NONE",
-    },
-    depositAmount: { type: Number, default: 0 },
-    refundPolicy: {
-      normalCancellationMinutes: { type: Number, default: 30 },
-      homeCancellationMinutes: { type: Number, default: 30 },
-      eventCancellationMinutes: { type: Number, default: 60 },
-      refundType: {
-        type: String,
-        enum: ["FULL", "PARTIAL", "NONE"],
-        default: "FULL",
-      },
-      partialRefundPercentage: { type: Number, default: 0 },
-    },
+    ],
   },
   { timestamps: true }
 );
