@@ -61,12 +61,9 @@ exports.createBooking = async (req, res) => {
     )
       return res.status(403).json({ message: "This store is temporarily unavailable." });
 
-    const client = await User.findById(req.user.id).select("debt");
-    if (client.debt > 0)
-      return res.status(403).json({
-        message: `You have an outstanding debt of ${client.debt} EGP. Please clear it before booking.`,
-        debt: client.debt,
-      });
+    // ✅ Get client — debt will be auto-deducted on next payment
+    const client = await User.findById(req.user.id).select("debt wallet");
+    const hasDebt = client.debt > 0;
 
     if (!rawServices || !Array.isArray(rawServices) || rawServices.length === 0)
       return res.status(400).json({ message: "At least one service is required." });
@@ -228,13 +225,19 @@ exports.createBooking = async (req, res) => {
     return res.status(201).json({
       message: "Booking created successfully.",
       appointment: newAppointment,
-      requiresDeposit: depositAmount > 0,
-      depositAmount,
-      totalAmount,
-      servicesCount: services.length,
       queueNumber,
       estimatedStartTime,
       expiryTime,
+      totalAmount,
+      requiresDeposit: depositAmount > 0,
+      depositAmount,
+      servicesCount: services.length,
+      // ✅ Tell frontend to show debt notice
+      debtNotice: hasDebt ? {
+        hasDebt: true,
+        debtAmount: client.debt,
+        message: `You have an outstanding balance of ${client.debt} EGP that will be added to your next payment.`,
+      } : null,
     });
   } catch (err) {
     return res.status(500).json({ message: err.message });
