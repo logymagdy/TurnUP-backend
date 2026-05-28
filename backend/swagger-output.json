@@ -5,7 +5,7 @@
     "description": "Smart queue and booking management system for barbershops and beauty salons",
     "version": "1.2.0"
   },
-  "host": "localhost:3000",
+  "host": "turnup-backend-j5nf.onrender.com",
   "basePath": "/api",
   "tags": [
     {
@@ -66,14 +66,14 @@
     }
   ],
   "schemes": [
-    "http"
+    "https"
   ],
   "securityDefinitions": {
     "bearerAuth": {
       "type": "apiKey",
       "in": "header",
       "name": "Authorization",
-      "description": "Enter your JWT token as: Bearer {token}"
+      "description": "Enter: Bearer {your_token_here}"
     }
   },
   "paths": {
