@@ -5,7 +5,6 @@ const http = require("http");
 const { Server } = require("socket.io");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
-const mongoSanitize = require("express-mongo-sanitize");
 const connectDB = require("./config/db");
 const path = require("path");
 
@@ -59,16 +58,6 @@ app.use(cors({
 app.use(express.json({ limit: "10kb" }));
 app.use(express.urlencoded({ extended: true, limit: "10kb" }));
 
-// ✅ 4. NoSQL injection sanitization
-// Strips $ and . from request body, query, params
-// Prevents MongoDB operator injection attacks
-app.use(mongoSanitize({
-  allowDots: true,
-  replaceWith: '_',
-  onSanitize: ({ req, key }) => {
-    console.warn(`Sanitized: ${key}`);
-  }
-}));
 
 // ─── RATE LIMITERS ────────────────────────────────────────────────────────────
 
