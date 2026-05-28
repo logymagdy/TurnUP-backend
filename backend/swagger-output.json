@@ -672,6 +672,11 @@
             "name": "minRating",
             "in": "query",
             "type": "string"
+          },
+          {
+            "name": "gender",
+            "in": "query",
+            "type": "string"
           }
         ],
         "responses": {
@@ -1480,6 +1485,11 @@
             "name": "authorization",
             "in": "header",
             "type": "string"
+          },
+          {
+            "name": "gender",
+            "in": "query",
+            "type": "string"
           }
         ],
         "responses": {
@@ -1496,6 +1506,11 @@
           {
             "name": "authorization",
             "in": "header",
+            "type": "string"
+          },
+          {
+            "name": "gender",
+            "in": "query",
             "type": "string"
           }
         ],
