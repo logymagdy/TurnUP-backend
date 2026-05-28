@@ -8,20 +8,23 @@ const doc = {
     version: "1.2.0",
   },
 
-  host: process.env.NODE_ENV === "production"
-    ? "turnup-backend-j5nf.onrender.com"
-    : "localhost:3000",
+  host:
+    process.env.NODE_ENV === "production"
+      ? "turnup-backend-j5nf.onrender.com"
+      : "localhost:3000",
 
-  basePath: "",
+  // ✅ Fixed basePath — all routes prefixed with /api
+  basePath: "/api",
 
-  schemes: process.env.NODE_ENV === "production" ? ["https"] : ["http"],
+  schemes:
+    process.env.NODE_ENV === "production" ? ["https"] : ["http"],
 
   securityDefinitions: {
     bearerAuth: {
       type: "apiKey",
       in: "header",
       name: "Authorization",
-      description: "Enter your JWT token as: Bearer <token>",
+      description: 'Enter your JWT token as: Bearer {token}',
     },
   },
 
@@ -37,6 +40,7 @@ const doc = {
     { name: "Notifications", description: "Push notifications" },
     { name: "Payments", description: "Payments and transactions" },
     { name: "Loyalty", description: "Loyalty points and rewards" },
+    { name: "Wallet", description: "Wallet balance and transactions" },
     { name: "Promotions", description: "Store promotions" },
     { name: "Complaints", description: "Client complaints" },
     { name: "Analytics", description: "Store and admin analytics" },
@@ -56,6 +60,7 @@ const routes = [
   "./routes/notificationRoutes.js",
   "./routes/paymentRoutes.js",
   "./routes/loyaltyRoutes.js",
+  "./routes/walletRoutes.js",
   "./routes/promotionRoutes.js",
   "./routes/complaintRoutes.js",
   "./routes/analyticsRoutes.js",
