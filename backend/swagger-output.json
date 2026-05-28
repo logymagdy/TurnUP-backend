@@ -2418,9 +2418,6 @@
           "200": {
             "description": "OK"
           },
-          "400": {
-            "description": "Bad Request"
-          },
           "401": {
             "description": "Unauthorized"
           },
@@ -2444,35 +2441,14 @@
             "name": "authorization",
             "in": "header",
             "type": "string"
-          },
-          {
-            "name": "body",
-            "in": "body",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "appointmentId": {
-                  "example": "any"
-                }
-              }
-            }
           }
         ],
         "responses": {
-          "200": {
-            "description": "OK"
-          },
-          "400": {
-            "description": "Bad Request"
-          },
           "401": {
             "description": "Unauthorized"
           },
           "403": {
             "description": "Forbidden"
-          },
-          "404": {
-            "description": "Not Found"
           },
           "500": {
             "description": "Internal Server Error"
@@ -2523,20 +2499,11 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "OK"
-          },
-          "400": {
-            "description": "Bad Request"
-          },
           "401": {
             "description": "Unauthorized"
           },
           "403": {
             "description": "Forbidden"
-          },
-          "404": {
-            "description": "Not Found"
           },
           "500": {
             "description": "Internal Server Error"
@@ -2549,68 +2516,15 @@
         "description": "",
         "parameters": [
           {
-            "name": "hmac",
-            "in": "query",
-            "type": "string"
-          },
-          {
             "name": "body",
             "in": "body",
             "schema": {
               "type": "object",
               "properties": {
-                "amount_cents": {
+                "obj": {
                   "example": "any"
                 },
-                "created_at": {
-                  "example": "any"
-                },
-                "currency": {
-                  "example": "any"
-                },
-                "error_occured": {
-                  "example": "any"
-                },
-                "has_parent_transaction": {
-                  "example": "any"
-                },
-                "id": {
-                  "example": "any"
-                },
-                "integration_id": {
-                  "example": "any"
-                },
-                "is_3d_secure": {
-                  "example": "any"
-                },
-                "is_auth": {
-                  "example": "any"
-                },
-                "is_capture": {
-                  "example": "any"
-                },
-                "is_refunded": {
-                  "example": "any"
-                },
-                "is_standalone_payment": {
-                  "example": "any"
-                },
-                "is_voided": {
-                  "example": "any"
-                },
-                "order": {
-                  "example": "any"
-                },
-                "owner": {
-                  "example": "any"
-                },
-                "pending": {
-                  "example": "any"
-                },
-                "source_data": {
-                  "example": "any"
-                },
-                "success": {
+                "hmac": {
                   "example": "any"
                 }
               }
@@ -2624,11 +2538,11 @@
           "400": {
             "description": "Bad Request"
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found"
+          },
+          "500": {
+            "description": "Internal Server Error"
           }
         }
       }

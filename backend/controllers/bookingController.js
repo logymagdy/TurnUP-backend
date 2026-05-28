@@ -229,9 +229,6 @@ exports.createBooking = async (req, res) => {
       estimatedStartTime,
       expiryTime,
       totalAmount,
-      requiresDeposit: depositAmount > 0,
-      depositAmount,
-      servicesCount: services.length,
       // ✅ Tell frontend to show debt notice
       debtNotice: hasDebt ? {
         hasDebt: true,
