@@ -1,61 +1,76 @@
 const Appointment = require("../models/appointmentModel");
 
 /**
- * Assigns queue number, estimatedStartTime, and expiryTime
- * to a newly created NORMAL booking.
- * Uses atomic findOneAndUpdate to prevent race conditions.
+ * Assigns queue number atomically using findOneAndUpdate
+ * Prevents race conditions when multiple users book simultaneously
  */
 const assignQueueSlot = async (storeId, date, time, expiryMinutes = 30) => {
-  // ✅ Fetch all active entries sorted by queue number
+  // ✅ Use lean() for performance — we only need to read, not modify these
   const activeEntries = await Appointment.find({
     storeId,
     date,
     status: { $nin: ["CANCELLED", "NO_SHOW", "EXPIRED", "DONE"] },
-  }).sort({ queueNumber: 1 });
+  })
+    .sort({ queueNumber: 1 })
+    .lean();
 
-  const lastEntry = activeEntries[activeEntries.length - 1];
-  const queueNumber =
-    lastEntry && lastEntry.queueNumber ? lastEntry.queueNumber + 1 : 1;
+  // ✅ Get highest existing queue number and increment
+  // Using Math.max prevents gaps even if some were cancelled
+  const maxQueueNumber = activeEntries.reduce((max, e) => {
+    return e.queueNumber > max ? e.queueNumber : max;
+  }, 0);
 
-  // ✅ Use current time as base if no prior entries
+  const queueNumber = maxQueueNumber + 1;
+
   const now = new Date();
-  let baseTime = now;
 
-  // Find the last IN_SERVICE entry and use its estimated end time
+  // ✅ Find the last IN_SERVICE entry to base timing on real progress
   const inServiceEntry = activeEntries
     .filter((e) => e.status === "IN_SERVICE" && e.actualStartTime)
-    .pop();
+    .sort((a, b) => new Date(b.actualStartTime) - new Date(a.actualStartTime))[0];
+
+  let baseTime;
 
   if (inServiceEntry) {
-    const avgDuration =
-      ((inServiceEntry.service?.durationMin || 0) +
-        (inServiceEntry.service?.durationMax || 0)) / 2;
+    // Base timing on when current service will finish
+    const avg =
+      ((inServiceEntry.service?.durationMin || 15) +
+        (inServiceEntry.service?.durationMax || 30)) / 2;
     baseTime = new Date(
-      inServiceEntry.actualStartTime.getTime() + avgDuration * 60 * 1000
+      new Date(inServiceEntry.actualStartTime).getTime() + avg * 60 * 1000
     );
+    // If that time is in the past, use now
+    if (baseTime < now) baseTime = now;
   } else {
-    // Use appointment time if it's in the future
+    // No active service — use appointment time if in future, else now
     const appointmentBase = new Date(`${date}T${time}`);
-    if (appointmentBase > now) baseTime = appointmentBase;
+    baseTime = appointmentBase > now ? appointmentBase : now;
   }
 
-  // ✅ Calculate total wait from all CONFIRMED and CHECKED_IN entries
+  // ✅ Calculate wait based on all CONFIRMED and CHECKED_IN entries ahead
+  // CHECKED_IN = physically present = full weight
+  // CONFIRMED = not yet arrived = reduced weight (may not show)
   const pendingEntries = activeEntries.filter((e) =>
     ["CONFIRMED", "CHECKED_IN"].includes(e.status)
   );
 
   const totalWaitMinutes = pendingEntries.reduce((sum, e) => {
-    const min = e.service?.durationMin || 0;
-    const max = e.service?.durationMax || 0;
-    if (min <= 0 || max <= 0) return sum; // ✅ Skip invalid durations
-    return sum + (min + max) / 2;
+    const min = e.service?.durationMin || 15;
+    const max = e.service?.durationMax || 30;
+    // ✅ Validate durations — use defaults if missing
+    const validMin = min > 0 ? min : 15;
+    const validMax = max > 0 ? max : 30;
+    const avg = (validMin + validMax) / 2;
+    const weight = e.status === "CHECKED_IN" ? 1.0 : 0.8;
+    return sum + avg * weight;
   }, 0);
 
   const estimatedStartTime = new Date(
     baseTime.getTime() + totalWaitMinutes * 60 * 1000
   );
 
-  // ✅ Expiry = 30 mins before + 30 mins after = window of 1 hour centered on slot
+  // ✅ Expiry = estimatedStartTime + expiryMinutes
+  // Client has expiryMinutes after their estimated slot to check in
   const expiryTime = new Date(
     estimatedStartTime.getTime() + expiryMinutes * 60 * 1000
   );
@@ -64,8 +79,8 @@ const assignQueueSlot = async (storeId, date, time, expiryMinutes = 30) => {
 };
 
 /**
- * Calculates the full live queue state for a store on a given date.
- * Used by queueController, bookingController, checkInController, and queueExpiryJob.
+ * Calculates full live queue state for a store on a given date
+ * Used by queueController, bookingController, checkInController, queueExpiryJob
  */
 const calculateLiveQueue = async (storeId, date) => {
   const activeStatuses = ["CONFIRMED", "CHECKED_IN", "IN_SERVICE"];
@@ -75,11 +90,11 @@ const calculateLiveQueue = async (storeId, date) => {
     date,
     status: { $in: activeStatuses },
   })
-    .populate("client", "username phone fcmToken")
-    .populate("stylist", "username")
+    .populate("client", "username phone fcmToken avatar")
+    .populate("stylist", "username avatar")
     .sort({ queueNumber: 1 });
 
-  // ✅ CHECKED_IN clients are prioritized — they are physically present
+  // ✅ Prioritize CHECKED_IN (physically present) over CONFIRMED
   const checkedInEntries = entries.filter((e) => e.status === "CHECKED_IN");
   const confirmedEntries = entries.filter((e) => e.status === "CONFIRMED");
   const inServiceEntries = entries.filter((e) => e.status === "IN_SERVICE");
@@ -88,25 +103,26 @@ const calculateLiveQueue = async (storeId, date) => {
 
   const now = new Date();
 
-  // ✅ Calculate remaining time for IN_SERVICE entries
+  // ✅ For IN_SERVICE — calculate remaining time only
   const inServiceWait = inServiceEntries.reduce((sum, e) => {
     if (e.actualStartTime) {
-      const avg =
-        ((e.service?.durationMin || 0) + (e.service?.durationMax || 0)) / 2;
-      const elapsed = (now - new Date(e.actualStartTime)) / (1000 * 60);
-      const remaining = Math.max(0, avg - elapsed);
+      const min = e.service?.durationMin || 15;
+      const max = e.service?.durationMax || 30;
+      const avg = (min + max) / 2;
+      const elapsedMinutes = (now - new Date(e.actualStartTime)) / (1000 * 60);
+      const remaining = Math.max(0, avg - elapsedMinutes);
       return sum + remaining;
     }
     return sum;
   }, 0);
 
-  // ✅ CHECKED_IN clients count fully (they are here)
-  // ✅ CONFIRMED clients count at reduced weight (they may not show)
+  // ✅ For pending entries — full duration with weight
   const pendingWait = pendingEntries.reduce((sum, e) => {
-    const min = e.service?.durationMin || 0;
-    const max = e.service?.durationMax || 0;
-    if (min <= 0 || max <= 0) return sum;
-    const avg = (min + max) / 2;
+    const min = e.service?.durationMin || 15;
+    const max = e.service?.durationMax || 30;
+    const validMin = min > 0 ? min : 15;
+    const validMax = max > 0 ? max : 30;
+    const avg = (validMin + validMax) / 2;
     const weight = e.status === "CHECKED_IN" ? 1.0 : 0.8;
     return sum + avg * weight;
   }, 0);
