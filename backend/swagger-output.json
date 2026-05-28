@@ -6,7 +6,7 @@
     "version": "1.2.0"
   },
   "host": "localhost:3000",
-  "basePath": "",
+  "basePath": "/api",
   "tags": [
     {
       "name": "Auth",
@@ -45,6 +45,10 @@
       "description": "Loyalty points and rewards"
     },
     {
+      "name": "Wallet",
+      "description": "Wallet balance and transactions"
+    },
+    {
       "name": "Promotions",
       "description": "Store promotions"
     },
@@ -69,7 +73,7 @@
       "type": "apiKey",
       "in": "header",
       "name": "Authorization",
-      "description": "Enter your JWT token as: Bearer <token>"
+      "description": "Enter your JWT token as: Bearer {token}"
     }
   },
   "paths": {
@@ -315,6 +319,12 @@
           },
           "400": {
             "description": "Bad Request"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "429": {
+            "description": "Too Many Requests"
           }
         }
       }
@@ -572,6 +582,58 @@
         }
       }
     },
+    "/favorites": {
+      "get": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/favorites/{storeId}": {
+      "post": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "storeId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
     "/search": {
       "get": {
         "description": "",
@@ -588,6 +650,26 @@
           },
           {
             "name": "location",
+            "in": "query",
+            "type": "string"
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "type": "string"
+          },
+          {
+            "name": "time",
+            "in": "query",
+            "type": "string"
+          },
+          {
+            "name": "service",
+            "in": "query",
+            "type": "string"
+          },
+          {
+            "name": "minRating",
             "in": "query",
             "type": "string"
           }
@@ -766,27 +848,6 @@
             "name": "authorization",
             "in": "header",
             "type": "string"
-          },
-          {
-            "name": "body",
-            "in": "body",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "name": {
-                  "example": "any"
-                },
-                "age": {
-                  "example": "any"
-                },
-                "role": {
-                  "example": "any"
-                },
-                "servicesHandled": {
-                  "example": "any"
-                }
-              }
-            }
           }
         ],
         "responses": {
@@ -869,6 +930,64 @@
                 }
               }
             }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/pause": {
+      "patch": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/resume": {
+      "patch": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "type": "string"
           }
         ],
         "responses": {
@@ -1370,6 +1489,23 @@
         }
       }
     },
+    "/offers": {
+      "get": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/view/{id}": {
       "get": {
         "description": "",
@@ -1402,8 +1538,8 @@
         }
       }
     },
-    "/{storeId}/favorite": {
-      "post": {
+    "/{storeId}/slots": {
+      "get": {
         "description": "",
         "parameters": [
           {
@@ -1416,14 +1552,75 @@
             "name": "authorization",
             "in": "header",
             "type": "string"
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "type": "string"
+          },
+          {
+            "name": "stylistId",
+            "in": "query",
+            "type": "string"
           }
         ],
         "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
           "401": {
             "description": "Unauthorized"
           },
-          "501": {
-            "description": "Not Implemented"
+          "404": {
+            "description": "Not Found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/{storeId}/specialists": {
+      "get": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "storeId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "type": "string"
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "type": "string"
+          },
+          {
+            "name": "time",
+            "in": "query",
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "500": {
+            "description": "Internal Server Error"
           }
         }
       }
@@ -1478,6 +1675,134 @@
           },
           "403": {
             "description": "Forbidden"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/history": {
+      "get": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/{bookingId}/details": {
+      "get": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "bookingId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/{bookingId}/receipt": {
+      "get": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "bookingId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/{bookingId}/rebook": {
+      "get": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "bookingId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
           },
           "500": {
             "description": "Internal Server Error"
@@ -1557,6 +1882,9 @@
                   "example": "any"
                 },
                 "review": {
+                  "example": "any"
+                },
+                "photos": {
                   "example": "any"
                 }
               }
@@ -1839,6 +2167,82 @@
           "401": {
             "description": "Unauthorized"
           },
+          "404": {
+            "description": "Not Found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/walk-in": {
+      "post": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "clientName": {
+                  "example": "any"
+                },
+                "serviceId": {
+                  "example": "any"
+                },
+                "stylistId": {
+                  "example": "any"
+                }
+              }
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/unread-count": {
+      "get": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
           "500": {
             "description": "Internal Server Error"
           }
@@ -1915,7 +2319,7 @@
             "schema": {
               "type": "object",
               "properties": {
-                "expoPushToken": {
+                "fcmToken": {
                   "example": "any"
                 }
               }
@@ -1982,7 +2386,7 @@
         }
       }
     },
-    "/cash": {
+    "/pay-at-store": {
       "post": {
         "description": "",
         "parameters": [
@@ -2052,7 +2456,7 @@
         }
       }
     },
-    "/{appointmentId}/cash-collected": {
+    "/{appointmentId}/collected": {
       "put": {
         "description": "",
         "parameters": [
@@ -2179,26 +2583,6 @@
         }
       }
     },
-    "/history": {
-      "get": {
-        "description": "",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "type": "string"
-          }
-        ],
-        "responses": {
-          "401": {
-            "description": "Unauthorized"
-          },
-          "404": {
-            "description": "Not Found"
-          }
-        }
-      }
-    },
     "/rewards": {
       "get": {
         "description": "",
@@ -2250,6 +2634,58 @@
           },
           "404": {
             "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/topup": {
+      "post": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "amount": {
+                  "example": "any"
+                }
+              }
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/transactions": {
+      "get": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized"
           }
         }
       }
@@ -2735,6 +3171,96 @@
           },
           "404": {
             "description": "Not Found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/subscriptions": {
+      "get": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/store/{storeId}/charge-subscription": {
+      "post": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "storeId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/dashboard": {
+      "get": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
           },
           "500": {
             "description": "Internal Server Error"

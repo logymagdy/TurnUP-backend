@@ -171,7 +171,7 @@ exports.getStore = async (req, res) => {
 
     const store = await Store.findOne(query)
       .populate("owner", "username email phone")
-      .populate("stylists", "username email avatar")
+      .populate("stylists", "username email avatar rating")
       .populate("receptionists", "username email");
 
     if (!store) return res.status(404).json({ message: "Store not found" });
@@ -285,7 +285,7 @@ exports.getStylists = async (req, res) => {
   try {
     const store = await Store.findOne({ owner: req.user.id }).populate(
       "stylists",
-      "username email phone avatar"
+      "username email phone avatar rating"
     );
     if (!store) return res.status(404).json({ message: "Store not found" });
     res.json(store.stylists);
@@ -364,12 +364,15 @@ exports.getPublicStore = async (req, res) => {
       operationalStatus: { $in: ["ACTIVE", "UNDER_INVESTIGATION"] },
     })
       .select(
-        "storeName storeType location bio logo services workingHours seats isWorkDayActive isOpen isPaused rating numReviews operationalStatus stylists"
+        "storeName storeType location bio logo services packages workingHours seats isWorkDayActive isOpen isPaused rating numReviews operationalStatus stylists gallery viewCount"
       )
       .populate("stylists", "username avatar rating");
 
     if (!store)
       return res.status(404).json({ message: "Store not found or unavailable." });
+
+    // ✅ Increment view count
+    await Store.findByIdAndUpdate(req.params.storeId, { $inc: { viewCount: 1 } });
 
     res.json(store);
   } catch (err) {
@@ -395,15 +398,7 @@ exports.getAllStores = async (req, res) => {
 // ─── SEARCH ───────────────────────────────────────────────────────────────────
 exports.searchStores = async (req, res) => {
   try {
-    const {
-      keyword,
-      type,
-      location,
-      date,
-      time,
-      service,
-      minRating,
-    } = req.query;
+    const { keyword, type, location, date, time, service, minRating } = req.query;
 
     const query = {
       approvalStatus: "APPROVED",
@@ -423,7 +418,7 @@ exports.searchStores = async (req, res) => {
     if (service) query["services.name"] = { $regex: service, $options: "i" };
     if (minRating) query.rating = { $gte: parseFloat(minRating) };
 
-    // ✅ Filter by date — store must be open on that day
+    // ✅ Filter by date — store must work on that day
     if (date) {
       const dayName = new Date(date).toLocaleDateString("en-US", {
         weekday: "long",
@@ -437,11 +432,10 @@ exports.searchStores = async (req, res) => {
       )
       .limit(50);
 
-    // ✅ If time filter provided — exclude stores where that time slot is fully booked
+    // ✅ Filter by time — exclude stores where that slot is fully booked
     if (date && time) {
       const storeIds = stores.map((s) => s._id);
 
-      // Find all stylists booked at this date/time across these stores
       const bookedAppointments = await Appointment.find({
         storeId: { $in: storeIds },
         date,
@@ -449,7 +443,6 @@ exports.searchStores = async (req, res) => {
         status: { $in: ["CONFIRMED", "CHECKED_IN", "IN_SERVICE"] },
       }).select("storeId stylist");
 
-      // Build map: storeId → set of booked stylist IDs
       const bookedMap = {};
       bookedAppointments.forEach((a) => {
         const sid = String(a.storeId);
@@ -457,7 +450,6 @@ exports.searchStores = async (req, res) => {
         bookedMap[sid].add(String(a.stylist));
       });
 
-      // Keep stores that still have at least one available stylist
       stores = stores.filter((store) => {
         const booked = bookedMap[String(store._id)] || new Set();
         const totalStylists = store.stylists?.length || 0;
@@ -503,8 +495,6 @@ exports.getStoreDetails = async (req, res) => {
 };
 
 // ─── AVAILABLE TIME SLOTS ─────────────────────────────────────────────────────
-// Returns all time slots for a store on a given date
-// Each slot shows: time, available stylists, taken stylists
 exports.getAvailableSlots = async (req, res) => {
   try {
     const { storeId } = req.params;
@@ -520,39 +510,38 @@ exports.getAvailableSlots = async (req, res) => {
     if (!store)
       return res.status(404).json({ message: "Store not found" });
 
-    // ✅ Generate time slots from working hours
+    // ✅ Generate slots from working hours
     const opening = store.workingHours?.opening || "09:00";
     const closing = store.workingHours?.closing || "21:00";
 
-    const slots = [];
     const [openHour, openMin] = opening.split(":").map(Number);
     const [closeHour, closeMin] = closing.split(":").map(Number);
 
     const openMinutes = openHour * 60 + openMin;
     const closeMinutes = closeHour * 60 + closeMin;
 
-    // Generate slots every 30 minutes
+    const slots = [];
     for (let m = openMinutes; m < closeMinutes; m += 30) {
       const h = Math.floor(m / 60);
       const min = m % 60;
-      const timeStr = `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
-      slots.push(timeStr);
+      slots.push(
+        `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`
+      );
     }
 
-    // ✅ Find all booked appointments for this date
+    // ✅ Get all booked appointments for this date
     const bookedQuery = {
       storeId,
       date,
       status: { $in: ["CONFIRMED", "CHECKED_IN", "IN_SERVICE"] },
     };
-
     if (stylistId) bookedQuery.stylist = stylistId;
 
     const bookedAppointments = await Appointment.find(bookedQuery).select(
       "time stylist"
     );
 
-    // Build map: time → array of booked stylist IDs
+    // Build map: time → booked stylist IDs
     const bookedByTime = {};
     bookedAppointments.forEach((a) => {
       if (!bookedByTime[a.time]) bookedByTime[a.time] = [];
@@ -563,7 +552,8 @@ exports.getAvailableSlots = async (req, res) => {
       ? store.stylists.filter((s) => String(s._id) === stylistId)
       : store.stylists;
 
-    // ✅ Build slot response with availability
+    // ✅ Build slot data with availability
+    const now = new Date();
     const slotData = slots.map((time) => {
       const bookedStylistIds = bookedByTime[time] || [];
 
@@ -575,13 +565,18 @@ exports.getAvailableSlots = async (req, res) => {
         isAvailable: !bookedStylistIds.includes(String(s._id)),
       }));
 
-      const hasAvailableStylist = stylistAvailability.some(
-        (s) => s.isAvailable
-      );
+      const hasAvailableStylist = stylistAvailability.some((s) => s.isAvailable);
+
+      // ✅ Mark past slots as unavailable
+      const [slotHour, slotMin] = time.split(":").map(Number);
+      const slotDate = new Date(date);
+      slotDate.setHours(slotHour, slotMin, 0, 0);
+      const isPast = slotDate < now;
 
       return {
         time,
-        isAvailable: hasAvailableStylist,      // ✅ false = show as grey/taken
+        isAvailable: !isPast && hasAvailableStylist,
+        isPast,
         availableCount: stylistAvailability.filter((s) => s.isAvailable).length,
         totalStylists: stylists.length,
         stylists: stylistAvailability,
@@ -601,7 +596,6 @@ exports.getAvailableSlots = async (req, res) => {
 };
 
 // ─── STORE SPECIALISTS ────────────────────────────────────────────────────────
-// Returns stylists with their ratings and review counts
 exports.getStoreSpecialists = async (req, res) => {
   try {
     const { storeId } = req.params;
@@ -620,10 +614,10 @@ exports.getStoreSpecialists = async (req, res) => {
       name: s.username,
       avatar: s.avatar,
       rating: s.rating || 0,
-      isAvailable: true, // default
+      isAvailable: true,
     }));
 
-    // ✅ If date and time provided — check which stylists are booked
+    // ✅ Check availability if date and time provided
     if (date && time) {
       const bookedAppointments = await Appointment.find({
         storeId,
@@ -640,7 +634,7 @@ exports.getStoreSpecialists = async (req, res) => {
       }));
     }
 
-    // ✅ Get review counts per stylist from appointments
+    // ✅ Get review counts from appointments
     const reviewCounts = await Appointment.aggregate([
       {
         $match: {
@@ -714,5 +708,45 @@ exports.getStoresWithOffers = async (req, res) => {
     return success(res, "Offers fetched successfully", offers);
   } catch (err) {
     return error(res, "Failed to get offers", 500);
+  }
+};
+
+// ─── QR CODE ──────────────────────────────────────────────────────────────────
+// ✅ Returns QR code for store entrance
+// Store prints this and displays at entrance
+// Clients scan it to check in
+exports.getStoreQR = async (req, res) => {
+  try {
+    const { storeId } = req.params;
+    const { generateQRCode } = require("../utils/generateQRCode");
+
+    const store = await Store.findById(storeId).select(
+      "storeName approvalStatus operationalStatus"
+    );
+
+    if (!store)
+      return res.status(404).json({ message: "Store not found." });
+
+    if (store.approvalStatus !== "APPROVED")
+      return res.status(403).json({ message: "Store not approved." });
+
+    if (
+      store.operationalStatus === "SUSPENDED" ||
+      store.operationalStatus === "BANNED"
+    )
+      return res.status(403).json({ message: "Store is unavailable." });
+
+    // ✅ QR payload contains storeId
+    // Frontend sends storeId to POST /api/checkin/ after scanning
+    const qrDataUrl = await generateQRCode(storeId);
+
+    return res.status(200).json({
+      message: "QR code generated.",
+      storeId,
+      storeName: store.storeName,
+      qrDataUrl,
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 };
