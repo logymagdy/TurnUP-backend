@@ -29,13 +29,7 @@ router.get("/:bookingId/rebook", protect, allowRoles("CLIENT"), getRebookData);
 router.put("/:bookingId/cancel", protect, allowRoles("CLIENT"), cancelBooking);
 router.post("/:bookingId/rate", protect, allowRoles("CLIENT"), submitRating);
 
-// ─── STORE ────────────────────────────────────────────────────────────────────
-router.get(
-  "/store-bookings",
-  protect,
-  allowRoles("serviceProvider", "RECEPTIONIST"),
-  getStoreBookings
-);
+// ─── STORE (serviceProvider only) ────────────────────────────────────────────
 router.put(
   "/:bookingId/cancel-by-store",
   protect,
@@ -43,9 +37,35 @@ router.put(
   cancelBookingByStore
 );
 
-// ─── RECEPTIONIST ─────────────────────────────────────────────────────────────
-router.put("/:bookingId/start", protect, allowRoles("RECEPTIONIST"), startService);
-router.put("/:bookingId/complete", protect, allowRoles("RECEPTIONIST"), completeService);
-router.put("/:bookingId/no-show", protect, allowRoles("RECEPTIONIST"), markNoShow);
+// ─── STORE BOOKING HISTORY ────────────────────────────────────────────────────
+// ?filter=all|today|week — groups by MORNING/AFTERNOON/EVENING
+// Access: serviceProvider + RECEPTIONIST
+router.get(
+  "/store-bookings",
+  protect,
+  allowRoles("serviceProvider", "RECEPTIONIST"),
+  getStoreBookings
+);
+
+// ─── QUEUE ACTIONS (RECEPTIONIST + serviceProvider) ───────────────────────────
+// Start/complete/no-show — available to both receptionist and store owner
+router.put(
+  "/:bookingId/start",
+  protect,
+  allowRoles("RECEPTIONIST", "serviceProvider"),
+  startService
+);
+router.put(
+  "/:bookingId/complete",
+  protect,
+  allowRoles("RECEPTIONIST", "serviceProvider"),
+  completeService
+);
+router.put(
+  "/:bookingId/no-show",
+  protect,
+  allowRoles("RECEPTIONIST", "serviceProvider"),
+  markNoShow
+);
 
 module.exports = router;
