@@ -42,27 +42,23 @@ io.on("connection", (socket) => {
 
 // ─── SECURITY MIDDLEWARE ──────────────────────────────────────────────────────
 
-// ✅ 1. Helmet — sets secure HTTP headers
-// Protects against XSS, clickjacking, MIME sniffing etc.
+// ✅ 1. Helmet — secure HTTP headers
 app.use(helmet());
 
-// ✅ 2. CORS — restrict to known origins
-// For mobile app, allow all origins but restrict methods
+// ✅ 2. CORS
 app.use(cors({
   origin: "*",
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
   allowedHeaders: ["Content-Type", "Authorization"],
 }));
 
-// ✅ 3. Body size limit — prevent DDoS via huge payloads
+// ✅ 3. Body size limit — prevent large payload attacks
 app.use(express.json({ limit: "10kb" }));
 app.use(express.urlencoded({ extended: true, limit: "10kb" }));
 
-
 // ─── RATE LIMITERS ────────────────────────────────────────────────────────────
 
-// ✅ 5. General API rate limiter
-// 100 requests per 15 minutes per IP
+// ✅ General — 100 requests per 15 mins
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
@@ -74,9 +70,7 @@ const generalLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// ✅ 6. Strict auth rate limiter
-// 10 attempts per 15 minutes per IP
-// Prevents brute force on login
+// ✅ Auth — 10 attempts per 15 mins
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
@@ -88,9 +82,7 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// ✅ 7. OTP rate limiter
-// 5 OTP requests per 15 minutes per IP
-// Prevents OTP brute force and spam
+// ✅ OTP — 5 requests per 15 mins
 const otpLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
@@ -102,8 +94,7 @@ const otpLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// ✅ 8. Booking rate limiter
-// 20 bookings per hour per IP
+// ✅ Booking — 20 per hour
 const bookingLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 20,
@@ -125,16 +116,8 @@ try {
   const swaggerUi = require("swagger-ui-express");
   const swaggerPath = path.resolve(__dirname, "./swagger-output.json");
   const swaggerFile = require(swaggerPath);
-
-  swaggerFile.host =
-    process.env.NODE_ENV === "production"
-      ? "turnup-backend-j5nf.onrender.com"
-      : `localhost:${PORT}`;
-
-  swaggerFile.schemes =
-    process.env.NODE_ENV === "production" ? ["https"] : ["http"];
-
   app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerFile));
+  console.log("Swagger loaded from:", swaggerPath);
 } catch (e) {
   console.log("Swagger not available yet");
 }
@@ -154,59 +137,38 @@ try {
   console.log("Suspension lift job not available");
 }
 
-// ─── APPLY GENERAL RATE LIMITER TO ALL API ROUTES ────────────────────────────
+// ─── APPLY RATE LIMITERS ──────────────────────────────────────────────────────
 app.use("/api/", generalLimiter);
-
-// ─── ROUTES ───────────────────────────────────────────────────────────────────
-
-// ✅ Auth routes with strict rate limiting
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/register", authLimiter);
 app.use("/api/auth/forgot-password", otpLimiter);
 app.use("/api/auth/verify-otp", otpLimiter);
 app.use("/api/auth/resend-otp", otpLimiter);
+app.use("/api/booking/create", bookingLimiter);
+
+// ─── ROUTES ───────────────────────────────────────────────────────────────────
 app.use("/api/auth", require("./routes/authRoutes"));
-
-// ✅ User routes
 app.use("/api/users", require("./routes/userRoutes"));
-
-// ✅ Store routes
 app.use("/api/store", require("./routes/storeRoutes"));
 app.use("/api/salons", require("./routes/storeRoutes"));
-
-// ✅ Queue & Booking with rate limiter
 app.use("/api/queue", require("./routes/queueRoutes"));
-app.use("/api/booking/create", bookingLimiter);
 app.use("/api/booking", require("./routes/bookingRoutes"));
 app.use("/api/bookings", require("./routes/bookingRoutes"));
-
-// ✅ Check-in
 app.use("/api/checkin", require("./routes/checkInRoutes"));
-
-// ✅ Notifications
 app.use("/api/notifications", require("./routes/notificationRoutes"));
-
-// ✅ Payment
 app.use("/api/payment", require("./routes/paymentRoutes"));
 app.use("/api/payments", require("./routes/paymentRoutes"));
-
-// ✅ Loyalty & Wallet
 app.use("/api/loyalty", require("./routes/loyaltyRoutes"));
 app.use("/api/wallet", require("./routes/walletRoutes"));
+app.use("/api/complaint", require("./routes/complaintRoutes"));
+app.use("/api/analytics", require("./routes/analyticsRoutes"));
+app.use("/api/admin", require("./routes/adminRoutes"));
 
-// ✅ Promotions
 try {
   app.use("/api/promotion", require("./routes/promotionRoutes"));
 } catch (e) {
   console.log("promotionRoutes not available yet");
 }
-
-// ✅ Complaints
-app.use("/api/complaint", require("./routes/complaintRoutes"));
-
-// ✅ Analytics & Admin
-app.use("/api/analytics", require("./routes/analyticsRoutes"));
-app.use("/api/admin", require("./routes/adminRoutes"));
 
 // ─── HEALTH CHECK ─────────────────────────────────────────────────────────────
 app.get("/", (req, res) => {
@@ -231,7 +193,6 @@ app.use((err, req, res, next) => {
   res.status(500).json({
     success: false,
     message: "Internal server error",
-    // ✅ Never expose error details in production
     error: process.env.NODE_ENV === "development" ? err.message : undefined,
   });
 });
