@@ -211,7 +211,7 @@ exports.deleteService = async (req, res) => {
   }
 };
 
-// ─── STEP 5: Add Stylists ─────────────────────────────────────────────────────
+// ─── STEP 5: Stylists ─────────────────────────────────────────────────────────
 // ✅ Stylists stored inside store document — shown to clients with photo and services
 exports.addStylistToStore = async (req, res) => {
   try {
@@ -230,7 +230,6 @@ exports.addStylistToStore = async (req, res) => {
     const store = await Store.findOne({ owner: req.user.id });
     if (!store) return res.status(404).json({ message: "Store not found." });
 
-    // ✅ Validate assigned services exist in store
     if (assignedServices && assignedServices.length > 0) {
       const serviceNames = store.services.map((s) => s.name);
       const invalid = assignedServices.filter(
@@ -263,6 +262,9 @@ exports.addStylistToStore = async (req, res) => {
     return res.status(500).json({ message: err.message });
   }
 };
+
+// ✅ Route alias — storeRoutes imports addStylist not addStylistToStore
+exports.addStylist = exports.addStylistToStore;
 
 exports.updateStylist = async (req, res) => {
   try {
@@ -316,6 +318,9 @@ exports.removeStylistFromStore = async (req, res) => {
   }
 };
 
+// ✅ Route alias — storeRoutes imports removeStylist not removeStylistFromStore
+exports.removeStylist = exports.removeStylistFromStore;
+
 exports.getStoreStylistsForClient = async (req, res) => {
   try {
     const { storeId } = req.params;
@@ -331,6 +336,81 @@ exports.getStoreStylistsForClient = async (req, res) => {
     return res.status(500).json({ message: err.message });
   }
 };
+
+exports.getStylists = async (req, res) => {
+  try {
+    const store = await Store.findOne({ owner: req.user.id }).select("stylists");
+    if (!store) return res.status(404).json({ message: "Store not found." });
+    return res.status(200).json({ stylists: store.stylists });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+// ─── RECEPTIONIST MANAGEMENT ──────────────────────────────────────────────────
+exports.addReceptionist = async (req, res) => {
+  try {
+    const { receptionistId } = req.body;
+
+    const receptionist = await User.findById(receptionistId);
+    if (!receptionist || receptionist.role !== "RECEPTIONIST")
+      return res.status(404).json({ message: "Receptionist not found." });
+
+    const store = await Store.findOne({ owner: req.user.id });
+    if (!store) return res.status(404).json({ message: "Store not found." });
+
+    if (store.receptionists.map(String).includes(String(receptionistId)))
+      return res.status(400).json({ message: "Already linked to this store." });
+
+    store.receptionists.push(receptionistId);
+    await store.save();
+
+    await User.findByIdAndUpdate(receptionistId, { storeId: store._id });
+
+    return res.status(200).json({ message: "Receptionist linked.", store });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+exports.removeReceptionist = async (req, res) => {
+  try {
+    const { receptionistId } = req.params;
+
+    const store = await Store.findOne({ owner: req.user.id });
+    if (!store) return res.status(404).json({ message: "Store not found." });
+
+    store.receptionists = store.receptionists.filter(
+      (r) => String(r) !== String(receptionistId)
+    );
+    await store.save();
+
+    await User.findByIdAndUpdate(receptionistId, { storeId: null });
+
+    return res.status(200).json({ message: "Receptionist removed." });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+exports.getReceptionists = async (req, res) => {
+  try {
+    const store = await Store.findOne({ owner: req.user.id }).populate(
+      "receptionists", "username email phone"
+    );
+    if (!store) return res.status(404).json({ message: "Store not found." });
+    return res.status(200).json({ receptionists: store.receptionists });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+// ─── ONBOARDING WIZARD ALIASES ────────────────────────────────────────────────
+// storeRoutes imports these names — they map to the step functions above
+exports.completeBusinessProfile = exports.saveStoreDocuments;   // step 2
+exports.updateBusinessSetup = exports.saveStoreSchedule;        // step 3
+exports.addStaffMember = exports.addStylistToStore;             // step 5
+exports.finishStoreSetup = exports.saveLoyaltyProgram;          // step 7 (defined below)
 
 // ─── STEP 7: Loyalty Program ──────────────────────────────────────────────────
 exports.saveLoyaltyProgram = async (req, res) => {
@@ -376,6 +456,9 @@ exports.saveLoyaltyProgram = async (req, res) => {
   }
 };
 
+// Fix alias — finishStoreSetup must point to the function defined above
+exports.finishStoreSetup = exports.saveLoyaltyProgram;
+
 // ─── STEP 9: Subscription ────────────────────────────────────────────────────
 exports.activateSubscription = async (req, res) => {
   try {
@@ -385,7 +468,6 @@ exports.activateSubscription = async (req, res) => {
     const now = new Date();
     const trialEnd = new Date(store.trialEndsAt);
 
-    // ✅ Check if still in trial
     if (now < trialEnd) {
       return res.status(200).json({
         message: "You are still in your free trial.",
@@ -395,7 +477,6 @@ exports.activateSubscription = async (req, res) => {
       });
     }
 
-    // ✅ Activate subscription
     store.subscriptionStatus = "SUBSCRIBED";
     store.subscribedAt = now;
     await store.save();
@@ -435,7 +516,7 @@ exports.getSubscriptionStatus = async (req, res) => {
   }
 };
 
-// ─── GET STORE PROFILE (owner) ───────────────────────────────────────────────
+// ─── STORE PROFILE ───────────────────────────────────────────────────────────
 exports.getStore = async (req, res) => {
   try {
     const store = await Store.findOne({ owner: req.user.id }).populate(
@@ -458,6 +539,31 @@ exports.updateStore = async (req, res) => {
     );
     if (!store) return res.status(404).json({ message: "Store not found." });
     return res.status(200).json({ message: "Store updated.", store });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+exports.createStore = async (req, res) => {
+  try {
+    const { storeName, storeType, location, logo, bio } = req.body;
+
+    if (!storeName || !storeType)
+      return res.status(400).json({ message: "storeName and storeType are required." });
+
+    const store = new Store({
+      owner: req.user.id,
+      storeName,
+      storeType,
+      location: location || null,
+      logo: logo || null,
+      bio: bio || null,
+    });
+
+    await store.save();
+    await User.findByIdAndUpdate(req.user.id, { storeId: store._id });
+
+    return res.status(201).json({ message: "Store created.", store });
   } catch (err) {
     return res.status(500).json({ message: err.message });
   }
@@ -594,6 +700,9 @@ exports.getStoreDetails = async (req, res) => {
       "username email"
     );
     if (!store) return res.status(404).json({ message: "Store not found." });
+
+    await Store.findByIdAndUpdate(req.params.id, { $inc: { viewCount: 1 } });
+
     return res.status(200).json(store);
   } catch (err) {
     return res.status(500).json({ message: err.message });
@@ -743,7 +852,6 @@ exports.getAvailableSlots = async (req, res) => {
       date,
       status: { $in: ["CONFIRMED", "CHECKED_IN", "IN_SERVICE"] },
     };
-    if (stylistId) bookedQuery["stylist.stylistId"] = stylistId;
 
     const bookedAppointments = await Appointment.find(bookedQuery).select(
       "time stylist"
@@ -857,6 +965,104 @@ exports.getStoreQR = async (req, res) => {
       storeId,
       storeName: store.storeName,
       qrDataUrl,
+    });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+// ─── SETTINGS: BUSINESS NOTIFICATION PREFERENCES ─────────────────────────────
+// GET  /api/store/notification-settings — Settings > Notifications screen
+// Returns all 8 business notification toggles
+// Access: serviceProvider + RECEPTIONIST
+exports.getBusinessNotificationSettings = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select(
+      "businessNotificationSettings"
+    );
+    if (!user) return res.status(404).json({ message: "User not found." });
+
+    // ✅ Return safe defaults for accounts created before this field existed
+    const settings = user.businessNotificationSettings || {
+      newBooking: true,
+      bookingCancellation: true,
+      noShowAlert: true,
+      newWalkIn: true,
+      queueDelay: true,
+      pushNotifications: true,
+      smsNotifications: true,
+      emailNotifications: false,
+    };
+
+    return res.status(200).json({ settings });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+// PUT  /api/store/notification-settings
+// Body: any subset of the 8 boolean toggle fields
+exports.updateBusinessNotificationSettings = async (req, res) => {
+  try {
+    const allowed = [
+      "newBooking",
+      "bookingCancellation",
+      "noShowAlert",
+      "newWalkIn",
+      "queueDelay",
+      "pushNotifications",
+      "smsNotifications",
+      "emailNotifications",
+    ];
+
+    const update = {};
+    allowed.forEach((key) => {
+      if (typeof req.body[key] === "boolean") {
+        update[`businessNotificationSettings.${key}`] = req.body[key];
+      }
+    });
+
+    if (Object.keys(update).length === 0)
+      return res.status(400).json({ message: "No valid fields provided." });
+
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      { $set: update },
+      { new: true }
+    ).select("businessNotificationSettings");
+
+    if (!user) return res.status(404).json({ message: "User not found." });
+
+    return res.status(200).json({
+      message: "Notification settings updated.",
+      settings: user.businessNotificationSettings,
+    });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+// ─── SETTINGS: MONTHLY REVENUE GOAL ──────────────────────────────────────────
+// PUT  /api/store/monthly-goal
+// Sets the monthly revenue target shown on the analytics screen progress bar
+// Access: serviceProvider only
+exports.setMonthlyRevenueGoal = async (req, res) => {
+  try {
+    const { monthlyRevenueGoal } = req.body;
+
+    if (monthlyRevenueGoal === undefined || monthlyRevenueGoal < 0)
+      return res.status(400).json({ message: "monthlyRevenueGoal must be a positive number." });
+
+    const store = await Store.findOneAndUpdate(
+      { owner: req.user.id },
+      { $set: { monthlyRevenueGoal: parseFloat(monthlyRevenueGoal) } },
+      { returnDocument: "after" }
+    );
+    if (!store) return res.status(404).json({ message: "Store not found." });
+
+    return res.status(200).json({
+      message: "Monthly revenue goal updated.",
+      monthlyRevenueGoal: store.monthlyRevenueGoal,
     });
   } catch (err) {
     return res.status(500).json({ message: err.message });
