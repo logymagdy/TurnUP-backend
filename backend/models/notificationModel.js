@@ -7,6 +7,8 @@ const notificationSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
+    // ✅ title immediately after userId as required by Fix 3
+    title: { type: String, default: "TurnUP" },
     type: {
       type: String,
       enum: [
@@ -40,7 +42,6 @@ const notificationSchema = new mongoose.Schema(
       ],
       required: true,
     },
-    title: { type: String, default: "TurnUP" },
     message: { type: String, required: true },
     isRead: { type: Boolean, default: false },
     referenceId: { type: mongoose.Schema.Types.ObjectId, default: null },
