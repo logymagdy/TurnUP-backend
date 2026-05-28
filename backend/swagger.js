@@ -3,28 +3,21 @@ const swaggerAutogen = require("swagger-autogen")();
 const doc = {
   info: {
     title: "TurnUP API",
-    description:
-      "Smart queue and booking management system for barbershops and beauty salons",
+    description: "Smart queue and booking management system for barbershops and beauty salons",
     version: "1.2.0",
   },
 
-  host:
-    process.env.NODE_ENV === "production"
-      ? "turnup-backend-j5nf.onrender.com"
-      : "localhost:3000",
-
-  // ✅ Fixed basePath — all routes prefixed with /api
+  // ✅ Hardcode production URL — swagger-output.json is for production
+  host: "turnup-backend-j5nf.onrender.com",
   basePath: "/api",
-
-  schemes:
-    process.env.NODE_ENV === "production" ? ["https"] : ["http"],
+  schemes: ["https"],
 
   securityDefinitions: {
     bearerAuth: {
       type: "apiKey",
       in: "header",
       name: "Authorization",
-      description: 'Enter your JWT token as: Bearer {token}',
+      description: "Enter: Bearer {your_token_here}",
     },
   },
 
