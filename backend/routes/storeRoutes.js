@@ -30,6 +30,7 @@ const {
   getStoreSpecialists,
   getStoresWithOffers,
   getStoreQR,
+  getStoreStylistsForClient,
   getBusinessNotificationSettings,
   updateBusinessNotificationSettings,
   setMonthlyRevenueGoal,
@@ -101,6 +102,7 @@ router.get("/offers", protect, getStoresWithOffers);
 router.get("/view/:id", protect, getStoreDetails);
 
 // ─── BOOKING FLOW ─────────────────────────────────────────────────────────────
+router.get("/:storeId/stylists", protect, getStoreStylistsForClient);
 router.get("/:storeId/slots", protect, getAvailableSlots);
 router.get("/:storeId/specialists", protect, getStoreSpecialists);
 router.get("/:storeId/qr", protect, getStoreQR);

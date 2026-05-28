@@ -410,8 +410,6 @@ exports.getReceptionists = async (req, res) => {
 exports.completeBusinessProfile = exports.saveStoreDocuments;   // step 2
 exports.updateBusinessSetup = exports.saveStoreSchedule;        // step 3
 exports.addStaffMember = exports.addStylistToStore;             // step 5
-exports.finishStoreSetup = exports.saveLoyaltyProgram;          // step 7 (defined below)
-
 // ─── STEP 7: Loyalty Program ──────────────────────────────────────────────────
 exports.saveLoyaltyProgram = async (req, res) => {
   try {
