@@ -2,18 +2,37 @@ const express = require("express");
 const router = express.Router();
 // #swagger.tags = ['Analytics']
 
-const { getStoreAnalytics } = require("../controllers/analyticsController");
+const {
+  getStoreAnalytics,
+  getBusinessDashboard,
+} = require("../controllers/analyticsController");
 const { protect, allowRoles } = require("../middleware/authMiddleware");
 
+// ─── BUSINESS DASHBOARD ───────────────────────────────────────────────────────
 /**
- * @route   GET /api/analytics/dashboard-stats
- * @desc    Get store-specific analytics (Revenue, Appointments, Customers)
- * @access  ServiceProvider Only
+ * @route   GET /api/analytics/business-dashboard
+ * @desc    Main dashboard: store name, today stats, weekly chart,
+ *          specialists, day schedule, top performer
+ * @access  serviceProvider only
  */
 router.get(
-  "/dashboard-stats", 
-  protect, 
-  allowRoles("serviceProvider"), 
+  "/business-dashboard",
+  protect,
+  allowRoles("serviceProvider"),
+  getBusinessDashboard
+);
+
+// ─── DEEP STORE ANALYTICS ─────────────────────────────────────────────────────
+/**
+ * @route   GET /api/analytics/dashboard-stats
+ * @desc    Full analytics: revenue, bookings, peak hours, top services,
+ *          stylist performance
+ * @access  serviceProvider only
+ */
+router.get(
+  "/dashboard-stats",
+  protect,
+  allowRoles("serviceProvider"),
   getStoreAnalytics
 );
 
