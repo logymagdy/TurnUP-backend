@@ -364,15 +364,16 @@ exports.getPublicStore = async (req, res) => {
       operationalStatus: { $in: ["ACTIVE", "UNDER_INVESTIGATION"] },
     })
       .select(
-        "storeName storeType location bio logo services packages workingHours seats isWorkDayActive isOpen isPaused rating numReviews operationalStatus stylists gallery viewCount"
+        "storeName storeType location bio logo services packages gallery workingHours seats isWorkDayActive isOpen isPaused rating numReviews operationalStatus stylists viewCount"
       )
       .populate("stylists", "username avatar rating");
 
     if (!store)
       return res.status(404).json({ message: "Store not found or unavailable." });
 
-    // ✅ Increment view count
-    await Store.findByIdAndUpdate(req.params.storeId, { $inc: { viewCount: 1 } });
+    await Store.findByIdAndUpdate(req.params.storeId, {
+      $inc: { viewCount: 1 },
+    });
 
     res.json(store);
   } catch (err) {
@@ -380,12 +381,24 @@ exports.getPublicStore = async (req, res) => {
   }
 };
 
+// ✅ Gender filtering — MEN sees barbershops, WOMEN sees beauty salons
 exports.getAllStores = async (req, res) => {
   try {
-    const stores = await Store.find({
+    const { gender } = req.query;
+
+    const query = {
       approvalStatus: "APPROVED",
       operationalStatus: { $in: ["ACTIVE", "UNDER_INVESTIGATION"] },
-    }).select(
+    };
+
+    // ✅ Filter by client's gender preference
+    if (gender === "MEN") {
+      query.storeType = "barbershop";
+    } else if (gender === "WOMEN") {
+      query.storeType = "beautySalon";
+    }
+
+    const stores = await Store.find(query).select(
       "storeName storeType location bio logo services workingHours isWorkDayActive isOpen isPaused rating numReviews"
     );
 
@@ -395,21 +408,82 @@ exports.getAllStores = async (req, res) => {
   }
 };
 
-// ─── SEARCH ───────────────────────────────────────────────────────────────────
-exports.searchStores = async (req, res) => {
+// ✅ Gender filtering for featured stores
+exports.getFeaturedStores = async (req, res) => {
   try {
-    const { keyword, type, location, date, time, service, minRating } = req.query;
+    const { gender } = req.query;
 
     const query = {
       approvalStatus: "APPROVED",
       operationalStatus: { $in: ["ACTIVE", "UNDER_INVESTIGATION"] },
     };
 
-    // ✅ Search by salon name OR service name
+    // ✅ Filter by client's gender preference
+    if (gender === "MEN") {
+      query.storeType = "barbershop";
+    } else if (gender === "WOMEN") {
+      query.storeType = "beautySalon";
+    }
+
+    const stores = await Store.find(query)
+      .select(
+        "storeName storeType location bio logo services workingHours isWorkDayActive isOpen rating numReviews"
+      )
+      .sort({ rating: -1 })
+      .limit(10);
+
+    return success(res, "Featured stores fetched", stores);
+  } catch (err) {
+    return error(res, "Failed to get featured stores", 500);
+  }
+};
+
+exports.getStoreDetails = async (req, res) => {
+  try {
+    const store = await Store.findById(req.params.id)
+      .populate("stylists", "username email phone avatar rating")
+      .populate("receptionists", "username email");
+
+    if (!store) return res.status(404).json({ message: "Store not found" });
+    res.json(store);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// ─── SEARCH ───────────────────────────────────────────────────────────────────
+exports.searchStores = async (req, res) => {
+  try {
+    const {
+      keyword,
+      type,
+      location,
+      date,
+      time,
+      service,
+      minRating,
+      gender,
+    } = req.query;
+
+    const query = {
+      approvalStatus: "APPROVED",
+      operationalStatus: { $in: ["ACTIVE", "UNDER_INVESTIGATION"] },
+    };
+
+    // ✅ Filter by gender — MEN sees barbershops, WOMEN sees beauty salons
+    if (gender === "MEN") {
+      query.storeType = "barbershop";
+    } else if (gender === "WOMEN") {
+      query.storeType = "beautySalon";
+    }
+
+    // ✅ Search by salon name OR service name OR bio OR location
     if (keyword) {
       query.$or = [
         { storeName: { $regex: keyword, $options: "i" } },
         { "services.name": { $regex: keyword, $options: "i" } },
+        { bio: { $regex: keyword, $options: "i" } },
+        { location: { $regex: keyword, $options: "i" } },
       ];
     }
 
@@ -418,7 +492,6 @@ exports.searchStores = async (req, res) => {
     if (service) query["services.name"] = { $regex: service, $options: "i" };
     if (minRating) query.rating = { $gte: parseFloat(minRating) };
 
-    // ✅ Filter by date — store must work on that day
     if (date) {
       const dayName = new Date(date).toLocaleDateString("en-US", {
         weekday: "long",
@@ -432,7 +505,6 @@ exports.searchStores = async (req, res) => {
       )
       .limit(50);
 
-    // ✅ Filter by time — exclude stores where that slot is fully booked
     if (date && time) {
       const storeIds = stores.map((s) => s._id);
 
@@ -463,34 +535,47 @@ exports.searchStores = async (req, res) => {
   }
 };
 
-exports.getFeaturedStores = async (req, res) => {
+// ─── OFFERS ───────────────────────────────────────────────────────────────────
+exports.getStoresWithOffers = async (req, res) => {
   try {
-    const stores = await Store.find({
+    const { gender } = req.query;
+    const now = new Date();
+    const Promotion = require("../models/promotionModel");
+
+    const storeMatch = {
       approvalStatus: "APPROVED",
       operationalStatus: { $in: ["ACTIVE", "UNDER_INVESTIGATION"] },
-    })
-      .select(
-        "storeName storeType location bio logo services workingHours isWorkDayActive isOpen rating numReviews"
-      )
-      .sort({ rating: -1 })
-      .limit(10);
+    };
 
-    return success(res, "Featured stores fetched", stores);
+    // ✅ Filter offers by gender too
+    if (gender === "MEN") storeMatch.storeType = "barbershop";
+    else if (gender === "WOMEN") storeMatch.storeType = "beautySalon";
+
+    const activePromotions = await Promotion.find({
+      isActive: true,
+      startDate: { $lte: now },
+      endDate: { $gte: now },
+    }).populate({
+      path: "storeId",
+      select:
+        "storeName storeType logo rating numReviews services location approvalStatus operationalStatus",
+      match: storeMatch,
+    });
+
+    const offers = activePromotions
+      .filter((p) => p.storeId)
+      .map((p) => ({
+        promotionId: p._id,
+        discountPercentage: p.discountPercentage,
+        description: p.description,
+        services: p.services,
+        endDate: p.endDate,
+        store: p.storeId,
+      }));
+
+    return success(res, "Offers fetched successfully", offers);
   } catch (err) {
-    return error(res, "Failed to get featured stores", 500);
-  }
-};
-
-exports.getStoreDetails = async (req, res) => {
-  try {
-    const store = await Store.findById(req.params.id)
-      .populate("stylists", "username email phone avatar rating")
-      .populate("receptionists", "username email");
-
-    if (!store) return res.status(404).json({ message: "Store not found" });
-    res.json(store);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
+    return error(res, "Failed to get offers", 500);
   }
 };
 
@@ -510,7 +595,6 @@ exports.getAvailableSlots = async (req, res) => {
     if (!store)
       return res.status(404).json({ message: "Store not found" });
 
-    // ✅ Generate slots from working hours
     const opening = store.workingHours?.opening || "09:00";
     const closing = store.workingHours?.closing || "21:00";
 
@@ -529,7 +613,6 @@ exports.getAvailableSlots = async (req, res) => {
       );
     }
 
-    // ✅ Get all booked appointments for this date
     const bookedQuery = {
       storeId,
       date,
@@ -541,7 +624,6 @@ exports.getAvailableSlots = async (req, res) => {
       "time stylist"
     );
 
-    // Build map: time → booked stylist IDs
     const bookedByTime = {};
     bookedAppointments.forEach((a) => {
       if (!bookedByTime[a.time]) bookedByTime[a.time] = [];
@@ -552,8 +634,8 @@ exports.getAvailableSlots = async (req, res) => {
       ? store.stylists.filter((s) => String(s._id) === stylistId)
       : store.stylists;
 
-    // ✅ Build slot data with availability
     const now = new Date();
+
     const slotData = slots.map((time) => {
       const bookedStylistIds = bookedByTime[time] || [];
 
@@ -565,7 +647,9 @@ exports.getAvailableSlots = async (req, res) => {
         isAvailable: !bookedStylistIds.includes(String(s._id)),
       }));
 
-      const hasAvailableStylist = stylistAvailability.some((s) => s.isAvailable);
+      const hasAvailableStylist = stylistAvailability.some(
+        (s) => s.isAvailable
+      );
 
       // ✅ Mark past slots as unavailable
       const [slotHour, slotMin] = time.split(":").map(Number);
@@ -617,7 +701,6 @@ exports.getStoreSpecialists = async (req, res) => {
       isAvailable: true,
     }));
 
-    // ✅ Check availability if date and time provided
     if (date && time) {
       const bookedAppointments = await Appointment.find({
         storeId,
@@ -634,7 +717,6 @@ exports.getStoreSpecialists = async (req, res) => {
       }));
     }
 
-    // ✅ Get review counts from appointments
     const reviewCounts = await Appointment.aggregate([
       {
         $match: {
@@ -674,47 +756,7 @@ exports.getStoreSpecialists = async (req, res) => {
   }
 };
 
-// ─── OFFERS ───────────────────────────────────────────────────────────────────
-exports.getStoresWithOffers = async (req, res) => {
-  try {
-    const now = new Date();
-    const Promotion = require("../models/promotionModel");
-
-    const activePromotions = await Promotion.find({
-      isActive: true,
-      startDate: { $lte: now },
-      endDate: { $gte: now },
-    }).populate({
-      path: "storeId",
-      select:
-        "storeName storeType logo rating numReviews services location approvalStatus operationalStatus",
-      match: {
-        approvalStatus: "APPROVED",
-        operationalStatus: { $in: ["ACTIVE", "UNDER_INVESTIGATION"] },
-      },
-    });
-
-    const offers = activePromotions
-      .filter((p) => p.storeId)
-      .map((p) => ({
-        promotionId: p._id,
-        discountPercentage: p.discountPercentage,
-        description: p.description,
-        services: p.services,
-        endDate: p.endDate,
-        store: p.storeId,
-      }));
-
-    return success(res, "Offers fetched successfully", offers);
-  } catch (err) {
-    return error(res, "Failed to get offers", 500);
-  }
-};
-
 // ─── QR CODE ──────────────────────────────────────────────────────────────────
-// ✅ Returns QR code for store entrance
-// Store prints this and displays at entrance
-// Clients scan it to check in
 exports.getStoreQR = async (req, res) => {
   try {
     const { storeId } = req.params;
@@ -736,8 +778,6 @@ exports.getStoreQR = async (req, res) => {
     )
       return res.status(403).json({ message: "Store is unavailable." });
 
-    // ✅ QR payload contains storeId
-    // Frontend sends storeId to POST /api/checkin/ after scanning
     const qrDataUrl = await generateQRCode(storeId);
 
     return res.status(200).json({
