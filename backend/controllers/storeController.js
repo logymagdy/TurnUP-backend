@@ -3,94 +3,467 @@ const User = require("../models/userModel");
 const Appointment = require("../models/appointmentModel");
 const { success, error } = require("../utils/responseHandler");
 
-// ─── ONBOARDING WIZARD ────────────────────────────────────────────────────────
-
+// ─── STEP 1: Business Info ────────────────────────────────────────────────────
 exports.registerStoreBusiness = async (req, res) => {
   try {
-    const { storeName, storeType, location, businessLicense, shopPhotos } = req.body;
+    const {
+      storeName,
+      logo,
+      storeType,
+      bio,
+      location,
+      coordinates,
+    } = req.body;
+
+    if (!storeName || !storeType)
+      return res.status(400).json({ message: "storeName and storeType are required." });
+
+    if (!["barbershop", "beautySalon"].includes(storeType))
+      return res.status(400).json({ message: "storeType must be barbershop or beautySalon." });
 
     const existingStore = await Store.findOne({ owner: req.user.id });
     if (existingStore)
-      return res.status(400).json({ message: "Already registered" });
+      return res.status(400).json({ message: "You already have a store registered." });
 
     const newStore = new Store({
       owner: req.user.id,
       storeName,
+      logo: logo || null,
       storeType,
-      location,
+      bio: bio || null,
+      location: location || null,
+      coordinates: coordinates || { lat: null, lng: null },
       approvalStatus: "PENDING",
-      approvalDocuments: { businessLicense, shopPhotos },
     });
 
     await newStore.save();
     await User.findByIdAndUpdate(req.user.id, { storeId: newStore._id });
 
-    res.status(201).json({ message: "Submitted for approval", store: newStore });
+    return res.status(201).json({
+      message: "Step 1 saved.",
+      storeId: newStore._id,
+      store: newStore,
+    });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    return res.status(500).json({ message: err.message });
   }
 };
 
-exports.completeBusinessProfile = async (req, res) => {
+// ─── STEP 2: Gallery & Documents ─────────────────────────────────────────────
+exports.saveStoreDocuments = async (req, res) => {
   try {
-    const { storeName, storeType, location, phone, logo } = req.body;
-
-    if (storeType && !["barbershop", "beautySalon"].includes(storeType))
-      return res.status(400).json({ message: "Invalid Store Type" });
+    const { gallery, businessLicense } = req.body;
 
     const store = await Store.findOneAndUpdate(
       { owner: req.user.id },
-      { storeName, storeType, location, phone, logo },
-      { returnDocument: "after", upsert: true }
+      {
+        $set: {
+          gallery: gallery || [],
+          businessLicense: businessLicense || null,
+        },
+      },
+      { returnDocument: "after" }
     );
 
-    await User.findByIdAndUpdate(req.user.id, { storeId: store._id });
-    res.json({ success: true, store });
+    if (!store) return res.status(404).json({ message: "Store not found." });
+
+    return res.status(200).json({ message: "Step 2 saved.", store });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    return res.status(500).json({ message: err.message });
   }
 };
 
-exports.updateBusinessSetup = async (req, res) => {
+// ─── STEP 3: Schedule & Settings ─────────────────────────────────────────────
+exports.saveStoreSchedule = async (req, res) => {
+  try {
+    const {
+      workingDays,
+      openingTime,
+      closingTime,
+      acceptWalkIns,
+      acceptOnlineBookings,
+      autoAssignStaff,
+      showEstimatedWaitTime,
+      instagramUsername,
+      followersCount,
+      phone,
+    } = req.body;
+
+    const store = await Store.findOneAndUpdate(
+      { owner: req.user.id },
+      {
+        $set: {
+          "workingHours.days": workingDays || [],
+          "workingHours.opening": openingTime || "09:00",
+          "workingHours.closing": closingTime || "21:00",
+          "settings.acceptWalkIns": acceptWalkIns ?? true,
+          "settings.acceptOnlineBookings": acceptOnlineBookings ?? true,
+          "settings.autoAssignStaff": autoAssignStaff ?? true,
+          "settings.showEstimatedWaitTime": showEstimatedWaitTime ?? true,
+          "socialPresence.instagramUsername": instagramUsername || null,
+          "socialPresence.followersCount": followersCount || 0,
+          phone: phone || null,
+        },
+      },
+      { returnDocument: "after" }
+    );
+
+    if (!store) return res.status(404).json({ message: "Store not found." });
+
+    return res.status(200).json({ message: "Step 3 saved.", store });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+// ─── STEP 4: Services ─────────────────────────────────────────────────────────
+exports.addService = async (req, res) => {
+  try {
+    const {
+      name,
+      photo,
+      durationMinutes,
+      price,
+      discountPercent,
+      description,
+    } = req.body;
+
+    if (!name || !durationMinutes || !price)
+      return res.status(400).json({
+        message: "name, durationMinutes and price are required.",
+      });
+
+    const store = await Store.findOne({ owner: req.user.id });
+    if (!store) return res.status(404).json({ message: "Store not found." });
+
+    store.services.push({
+      name,
+      photo: photo || null,
+      durationMinutes: parseInt(durationMinutes),
+      price: parseFloat(price),
+      discountPercent: parseFloat(discountPercent) || 0,
+      description: description || null,
+      isActive: true,
+    });
+
+    await store.save();
+
+    return res.status(201).json({
+      message: "Service added successfully.",
+      services: store.services,
+    });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+exports.updateService = async (req, res) => {
+  try {
+    const { serviceId } = req.params;
+
+    const store = await Store.findOne({ owner: req.user.id });
+    if (!store) return res.status(404).json({ message: "Store not found." });
+
+    const service = store.services.id(serviceId);
+    if (!service) return res.status(404).json({ message: "Service not found." });
+
+    const {
+      name,
+      photo,
+      durationMinutes,
+      price,
+      discountPercent,
+      description,
+      isActive,
+    } = req.body;
+
+    if (name) service.name = name;
+    if (photo !== undefined) service.photo = photo;
+    if (durationMinutes) service.durationMinutes = parseInt(durationMinutes);
+    if (price) service.price = parseFloat(price);
+    if (discountPercent !== undefined) service.discountPercent = parseFloat(discountPercent);
+    if (description !== undefined) service.description = description;
+    if (isActive !== undefined) service.isActive = isActive;
+
+    await store.save();
+
+    return res.status(200).json({ message: "Service updated.", service });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+exports.deleteService = async (req, res) => {
+  try {
+    const { serviceId } = req.params;
+
+    const store = await Store.findOne({ owner: req.user.id });
+    if (!store) return res.status(404).json({ message: "Store not found." });
+
+    store.services = store.services.filter(
+      (s) => String(s._id) !== String(serviceId)
+    );
+    await store.save();
+
+    return res.status(200).json({ message: "Service deleted." });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+// ─── STEP 5: Add Stylists ─────────────────────────────────────────────────────
+// ✅ Stylists stored inside store document — shown to clients with photo and services
+exports.addStylistToStore = async (req, res) => {
+  try {
+    const {
+      fullName,
+      photo,
+      age,
+      role,
+      assignedServices,
+      payoutAccount,
+    } = req.body;
+
+    if (!fullName)
+      return res.status(400).json({ message: "fullName is required." });
+
+    const store = await Store.findOne({ owner: req.user.id });
+    if (!store) return res.status(404).json({ message: "Store not found." });
+
+    // ✅ Validate assigned services exist in store
+    if (assignedServices && assignedServices.length > 0) {
+      const serviceNames = store.services.map((s) => s.name);
+      const invalid = assignedServices.filter(
+        (s) => !serviceNames.includes(s)
+      );
+      if (invalid.length > 0)
+        return res.status(400).json({
+          message: `Services not found in store: ${invalid.join(", ")}`,
+        });
+    }
+
+    store.stylists.push({
+      fullName,
+      photo: photo || null,
+      age: age || null,
+      role: role || null,
+      assignedServices: assignedServices || [],
+      payoutAccount: payoutAccount || null,
+      rating: 0,
+      reviewCount: 0,
+    });
+
+    await store.save();
+
+    return res.status(201).json({
+      message: "Stylist added successfully.",
+      stylists: store.stylists,
+    });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+exports.updateStylist = async (req, res) => {
+  try {
+    const { stylistId } = req.params;
+
+    const store = await Store.findOne({ owner: req.user.id });
+    if (!store) return res.status(404).json({ message: "Store not found." });
+
+    const stylist = store.stylists.id(stylistId);
+    if (!stylist) return res.status(404).json({ message: "Stylist not found." });
+
+    const {
+      fullName,
+      photo,
+      age,
+      role,
+      assignedServices,
+      payoutAccount,
+    } = req.body;
+
+    if (fullName) stylist.fullName = fullName;
+    if (photo !== undefined) stylist.photo = photo;
+    if (age !== undefined) stylist.age = age;
+    if (role !== undefined) stylist.role = role;
+    if (assignedServices) stylist.assignedServices = assignedServices;
+    if (payoutAccount !== undefined) stylist.payoutAccount = payoutAccount;
+
+    await store.save();
+
+    return res.status(200).json({ message: "Stylist updated.", stylist });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+exports.removeStylistFromStore = async (req, res) => {
+  try {
+    const { stylistId } = req.params;
+
+    const store = await Store.findOne({ owner: req.user.id });
+    if (!store) return res.status(404).json({ message: "Store not found." });
+
+    store.stylists = store.stylists.filter(
+      (s) => String(s._id) !== String(stylistId)
+    );
+    await store.save();
+
+    return res.status(200).json({ message: "Stylist removed." });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+exports.getStoreStylistsForClient = async (req, res) => {
+  try {
+    const { storeId } = req.params;
+
+    const store = await Store.findById(storeId).select("stylists");
+    if (!store) return res.status(404).json({ message: "Store not found." });
+
+    return res.status(200).json({
+      message: "Stylists retrieved.",
+      stylists: store.stylists,
+    });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+// ─── STEP 7: Loyalty Program ──────────────────────────────────────────────────
+exports.saveLoyaltyProgram = async (req, res) => {
+  try {
+    const {
+      enabled,
+      pointsPerVisit,
+      pointsPerEGP,
+      maxDiscountPercent,
+      referralReward,
+      cancellationCompensation,
+      onlinePaymentBonus,
+      vipThreshold,
+      pointsExpiryMonths,
+    } = req.body;
+
+    const store = await Store.findOneAndUpdate(
+      { owner: req.user.id },
+      {
+        $set: {
+          "loyaltyProgram.enabled": enabled ?? false,
+          "loyaltyProgram.pointsPerVisit": pointsPerVisit ?? 10,
+          "loyaltyProgram.pointsPerEGP": pointsPerEGP ?? 1,
+          "loyaltyProgram.maxDiscountPercent": maxDiscountPercent ?? 50,
+          "loyaltyProgram.referralReward": referralReward ?? 20,
+          "loyaltyProgram.cancellationCompensation": cancellationCompensation ?? 50,
+          "loyaltyProgram.onlinePaymentBonus": onlinePaymentBonus ?? 10,
+          "loyaltyProgram.vipThreshold": vipThreshold ?? 1000,
+          "loyaltyProgram.pointsExpiryMonths": pointsExpiryMonths ?? 6,
+        },
+      },
+      { returnDocument: "after" }
+    );
+
+    if (!store) return res.status(404).json({ message: "Store not found." });
+
+    return res.status(200).json({
+      message: "Step 7 saved.",
+      loyaltyProgram: store.loyaltyProgram,
+    });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+// ─── STEP 9: Subscription ────────────────────────────────────────────────────
+exports.activateSubscription = async (req, res) => {
+  try {
+    const store = await Store.findOne({ owner: req.user.id });
+    if (!store) return res.status(404).json({ message: "Store not found." });
+
+    const now = new Date();
+    const trialEnd = new Date(store.trialEndsAt);
+
+    // ✅ Check if still in trial
+    if (now < trialEnd) {
+      return res.status(200).json({
+        message: "You are still in your free trial.",
+        trialEndsAt: store.trialEndsAt,
+        daysLeft: Math.ceil((trialEnd - now) / (1000 * 60 * 60 * 24)),
+        subscriptionStatus: "TRIAL",
+      });
+    }
+
+    // ✅ Activate subscription
+    store.subscriptionStatus = "SUBSCRIBED";
+    store.subscribedAt = now;
+    await store.save();
+
+    return res.status(200).json({
+      message: "Subscription activated successfully.",
+      subscriptionStatus: "SUBSCRIBED",
+      subscribedAt: now,
+    });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+exports.getSubscriptionStatus = async (req, res) => {
+  try {
+    const store = await Store.findOne({ owner: req.user.id }).select(
+      "subscriptionStatus trialStartDate trialEndsAt subscribedAt storeName"
+    );
+    if (!store) return res.status(404).json({ message: "Store not found." });
+
+    const now = new Date();
+    const trialEnd = new Date(store.trialEndsAt);
+    const daysLeft = Math.max(
+      0,
+      Math.ceil((trialEnd - now) / (1000 * 60 * 60 * 24))
+    );
+
+    return res.status(200).json({
+      subscriptionStatus: store.subscriptionStatus,
+      trialEndsAt: store.trialEndsAt,
+      daysLeft: store.subscriptionStatus === "TRIAL" ? daysLeft : null,
+      subscribedAt: store.subscribedAt,
+    });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+// ─── GET STORE PROFILE (owner) ───────────────────────────────────────────────
+exports.getStore = async (req, res) => {
+  try {
+    const store = await Store.findOne({ owner: req.user.id }).populate(
+      "receptionists",
+      "username email phone"
+    );
+    if (!store) return res.status(404).json({ message: "Store not found." });
+    return res.status(200).json(store);
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+exports.updateStore = async (req, res) => {
   try {
     const store = await Store.findOneAndUpdate(
       { owner: req.user.id },
       { $set: req.body },
       { returnDocument: "after", runValidators: true }
     );
-    if (!store) return res.status(404).json({ message: "Store not found" });
-    res.json({ success: true, message: "Setup saved", store });
+    if (!store) return res.status(404).json({ message: "Store not found." });
+    return res.status(200).json({ message: "Store updated.", store });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    return res.status(500).json({ message: err.message });
   }
 };
 
-exports.addStaffMember = async (req, res) => {
-  try {
-    res.json({ success: true, message: "Staff member added to setup list" });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
-
-exports.finishStoreSetup = async (req, res) => {
-  try {
-    const { loyaltyProgram, paymentSetup } = req.body;
-
-    const store = await Store.findOneAndUpdate(
-      { owner: req.user.id },
-      { $set: { loyaltyProgram, paymentSetup, approvalStatus: "PENDING" } },
-      { returnDocument: "after" }
-    );
-    if (!store) return res.status(404).json({ message: "Store not found" });
-    res.json({ success: true, message: "Setup complete!", store });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
-
-// ─── STORE AVAILABILITY CONTROLS ──────────────────────────────────────────────
-
+// ─── TOGGLE WORKDAY ───────────────────────────────────────────────────────────
 exports.toggleWorkDay = async (req, res) => {
   try {
     const { isActive } = req.body;
@@ -104,15 +477,14 @@ exports.toggleWorkDay = async (req, res) => {
       },
       { returnDocument: "after" }
     );
-    if (!store) return res.status(404).json({ message: "Store not found" });
+    if (!store) return res.status(404).json({ message: "Store not found." });
 
-    res.json({
-      success: true,
+    return res.status(200).json({
       message: isActive ? "Work day started!" : "Work day ended.",
       store,
     });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    return res.status(500).json({ message: err.message });
   }
 };
 
@@ -123,10 +495,10 @@ exports.pauseStore = async (req, res) => {
       { isPaused: true },
       { returnDocument: "after" }
     );
-    if (!store) return res.status(404).json({ message: "Store not found" });
-    res.json({ success: true, message: "Store paused.", store });
+    if (!store) return res.status(404).json({ message: "Store not found." });
+    return res.status(200).json({ message: "Store paused.", store });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    return res.status(500).json({ message: err.message });
   }
 };
 
@@ -137,236 +509,23 @@ exports.resumeStore = async (req, res) => {
       { isPaused: false },
       { returnDocument: "after" }
     );
-    if (!store) return res.status(404).json({ message: "Store not found" });
-    res.json({ success: true, message: "Store resumed.", store });
+    if (!store) return res.status(404).json({ message: "Store not found." });
+    return res.status(200).json({ message: "Store resumed.", store });
   } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
-
-// ─── STORE MANAGEMENT ─────────────────────────────────────────────────────────
-
-exports.createStore = async (req, res) => {
-  try {
-    const existing = await Store.findOne({ owner: req.user.id });
-    if (existing)
-      return res.status(400).json({ message: "You already have a store" });
-
-    const store = new Store({ owner: req.user.id, ...req.body });
-    await store.save();
-
-    await User.findByIdAndUpdate(req.user.id, { storeId: store._id });
-    res.status(201).json({ message: "Store created successfully", store });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
-
-exports.getStore = async (req, res) => {
-  try {
-    const query =
-      req.user.role === "ADMIN"
-        ? { _id: req.params.id }
-        : { owner: req.user.id };
-
-    const store = await Store.findOne(query)
-      .populate("owner", "username email phone")
-      .populate("stylists", "username email avatar rating")
-      .populate("receptionists", "username email");
-
-    if (!store) return res.status(404).json({ message: "Store not found" });
-    res.json(store);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
-
-exports.updateStore = async (req, res) => {
-  try {
-    const store = await Store.findOneAndUpdate(
-      { owner: req.user.id },
-      req.body,
-      { returnDocument: "after", runValidators: true }
-    );
-    if (!store) return res.status(404).json({ message: "Store not found" });
-    res.json({ message: "Store updated successfully", store });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
-
-exports.addStylist = async (req, res) => {
-  try {
-    const { stylistId } = req.body;
-
-    const stylist = await User.findById(stylistId);
-    if (!stylist)
-      return res.status(404).json({ message: "User not found" });
-
-    const store = await Store.findOne({ owner: req.user.id });
-    if (!store) return res.status(404).json({ message: "Store not found" });
-
-    if (store.stylists.map(String).includes(String(stylistId)))
-      return res.status(400).json({ message: "Stylist already added" });
-
-    store.stylists.push(stylistId);
-    await store.save();
-
-    await User.findByIdAndUpdate(stylistId, { storeId: store._id });
-    res.json({ message: "Stylist added successfully" });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
-
-exports.removeStylist = async (req, res) => {
-  try {
-    const { stylistId } = req.params;
-
-    const store = await Store.findOne({ owner: req.user.id });
-    if (!store) return res.status(404).json({ message: "Store not found" });
-
-    store.stylists = store.stylists.filter(
-      (id) => String(id) !== String(stylistId)
-    );
-    await store.save();
-
-    await User.findByIdAndUpdate(stylistId, { storeId: null });
-    res.json({ message: "Stylist removed successfully" });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
-
-exports.addReceptionist = async (req, res) => {
-  try {
-    const { receptionistId } = req.body;
-
-    const receptionist = await User.findById(receptionistId);
-    if (!receptionist || receptionist.role !== "RECEPTIONIST")
-      return res.status(404).json({ message: "Receptionist not found" });
-
-    const store = await Store.findOne({ owner: req.user.id });
-    if (!store) return res.status(404).json({ message: "Store not found" });
-
-    if (store.receptionists.map(String).includes(String(receptionistId)))
-      return res.status(400).json({ message: "Receptionist already added" });
-
-    store.receptionists.push(receptionistId);
-    await store.save();
-
-    await User.findByIdAndUpdate(receptionistId, { storeId: store._id });
-    res.json({ message: "Receptionist added successfully" });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
-
-exports.removeReceptionist = async (req, res) => {
-  try {
-    const { receptionistId } = req.params;
-
-    const store = await Store.findOne({ owner: req.user.id });
-    if (!store) return res.status(404).json({ message: "Store not found" });
-
-    store.receptionists = store.receptionists.filter(
-      (id) => String(id) !== String(receptionistId)
-    );
-    await store.save();
-
-    await User.findByIdAndUpdate(receptionistId, { storeId: null });
-    res.json({ message: "Receptionist removed successfully" });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
-
-exports.getStylists = async (req, res) => {
-  try {
-    const store = await Store.findOne({ owner: req.user.id }).populate(
-      "stylists",
-      "username email phone avatar rating"
-    );
-    if (!store) return res.status(404).json({ message: "Store not found" });
-    res.json(store.stylists);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
-
-exports.getReceptionists = async (req, res) => {
-  try {
-    const store = await Store.findOne({ owner: req.user.id }).populate(
-      "receptionists",
-      "username email phone"
-    );
-    if (!store) return res.status(404).json({ message: "Store not found" });
-    res.json(store.receptionists);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
-
-exports.addService = async (req, res) => {
-  try {
-    const store = await Store.findOne({ owner: req.user.id });
-    if (!store) return res.status(404).json({ message: "Store not found" });
-
-    store.services.push(req.body);
-    await store.save();
-
-    res.status(201).json({ message: "Service added", services: store.services });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
-
-exports.updateService = async (req, res) => {
-  try {
-    const store = await Store.findOne({ owner: req.user.id });
-    if (!store) return res.status(404).json({ message: "Store not found" });
-
-    const service = store.services.id(req.params.serviceId);
-    if (!service) return res.status(404).json({ message: "Service not found" });
-
-    Object.assign(service, req.body);
-    await store.save();
-
-    res.json({ message: "Service updated", service });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
-
-exports.deleteService = async (req, res) => {
-  try {
-    const store = await Store.findOne({ owner: req.user.id });
-    if (!store) return res.status(404).json({ message: "Store not found" });
-
-    store.services = store.services.filter(
-      (s) => String(s._id) !== String(req.params.serviceId)
-    );
-    await store.save();
-
-    res.json({ message: "Service deleted" });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
+    return res.status(500).json({ message: err.message });
   }
 };
 
 // ─── CLIENT DISCOVERY ─────────────────────────────────────────────────────────
-
 exports.getPublicStore = async (req, res) => {
   try {
     const store = await Store.findOne({
       _id: req.params.storeId,
       approvalStatus: "APPROVED",
       operationalStatus: { $in: ["ACTIVE", "UNDER_INVESTIGATION"] },
-    })
-      .select(
-        "storeName storeType location bio logo services packages gallery workingHours seats isWorkDayActive isOpen isPaused rating numReviews operationalStatus stylists viewCount"
-      )
-      .populate("stylists", "username avatar rating");
+    }).select(
+      "storeName storeType location bio logo services stylists gallery workingHours settings rating numReviews isOpen isPaused viewCount loyaltyProgram"
+    );
 
     if (!store)
       return res.status(404).json({ message: "Store not found or unavailable." });
@@ -375,13 +534,12 @@ exports.getPublicStore = async (req, res) => {
       $inc: { viewCount: 1 },
     });
 
-    res.json(store);
+    return res.status(200).json(store);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    return res.status(500).json({ message: err.message });
   }
 };
 
-// ✅ Gender filtering — MEN sees barbershops, WOMEN sees beauty salons
 exports.getAllStores = async (req, res) => {
   try {
     const { gender } = req.query;
@@ -391,24 +549,19 @@ exports.getAllStores = async (req, res) => {
       operationalStatus: { $in: ["ACTIVE", "UNDER_INVESTIGATION"] },
     };
 
-    // ✅ Filter by client's gender preference
-    if (gender === "MEN") {
-      query.storeType = "barbershop";
-    } else if (gender === "WOMEN") {
-      query.storeType = "beautySalon";
-    }
+    if (gender === "MEN") query.storeType = "barbershop";
+    else if (gender === "WOMEN") query.storeType = "beautySalon";
 
     const stores = await Store.find(query).select(
-      "storeName storeType location bio logo services workingHours isWorkDayActive isOpen isPaused rating numReviews"
+      "storeName storeType location bio logo services workingHours isOpen isPaused rating numReviews"
     );
 
-    res.json(stores);
+    return res.status(200).json(stores);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    return res.status(500).json({ message: err.message });
   }
 };
 
-// ✅ Gender filtering for featured stores
 exports.getFeaturedStores = async (req, res) => {
   try {
     const { gender } = req.query;
@@ -418,16 +571,12 @@ exports.getFeaturedStores = async (req, res) => {
       operationalStatus: { $in: ["ACTIVE", "UNDER_INVESTIGATION"] },
     };
 
-    // ✅ Filter by client's gender preference
-    if (gender === "MEN") {
-      query.storeType = "barbershop";
-    } else if (gender === "WOMEN") {
-      query.storeType = "beautySalon";
-    }
+    if (gender === "MEN") query.storeType = "barbershop";
+    else if (gender === "WOMEN") query.storeType = "beautySalon";
 
     const stores = await Store.find(query)
       .select(
-        "storeName storeType location bio logo services workingHours isWorkDayActive isOpen rating numReviews"
+        "storeName storeType location bio logo services workingHours isOpen rating numReviews"
       )
       .sort({ rating: -1 })
       .limit(10);
@@ -440,44 +589,30 @@ exports.getFeaturedStores = async (req, res) => {
 
 exports.getStoreDetails = async (req, res) => {
   try {
-    const store = await Store.findById(req.params.id)
-      .populate("stylists", "username email phone avatar rating")
-      .populate("receptionists", "username email");
-
-    if (!store) return res.status(404).json({ message: "Store not found" });
-    res.json(store);
+    const store = await Store.findById(req.params.id).populate(
+      "receptionists",
+      "username email"
+    );
+    if (!store) return res.status(404).json({ message: "Store not found." });
+    return res.status(200).json(store);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    return res.status(500).json({ message: err.message });
   }
 };
 
-// ─── SEARCH ───────────────────────────────────────────────────────────────────
 exports.searchStores = async (req, res) => {
   try {
-    const {
-      keyword,
-      type,
-      location,
-      date,
-      time,
-      service,
-      minRating,
-      gender,
-    } = req.query;
+    const { keyword, type, location, date, time, service, minRating, gender } =
+      req.query;
 
     const query = {
       approvalStatus: "APPROVED",
       operationalStatus: { $in: ["ACTIVE", "UNDER_INVESTIGATION"] },
     };
 
-    // ✅ Filter by gender — MEN sees barbershops, WOMEN sees beauty salons
-    if (gender === "MEN") {
-      query.storeType = "barbershop";
-    } else if (gender === "WOMEN") {
-      query.storeType = "beautySalon";
-    }
+    if (gender === "MEN") query.storeType = "barbershop";
+    else if (gender === "WOMEN") query.storeType = "beautySalon";
 
-    // ✅ Search by salon name OR service name OR bio OR location
     if (keyword) {
       query.$or = [
         { storeName: { $regex: keyword, $options: "i" } },
@@ -501,13 +636,12 @@ exports.searchStores = async (req, res) => {
 
     let stores = await Store.find(query)
       .select(
-        "storeName storeType location bio logo services workingHours isWorkDayActive isOpen isPaused rating numReviews"
+        "storeName storeType location bio logo services workingHours isOpen isPaused rating numReviews"
       )
       .limit(50);
 
     if (date && time) {
       const storeIds = stores.map((s) => s._id);
-
       const bookedAppointments = await Appointment.find({
         storeId: { $in: storeIds },
         date,
@@ -535,7 +669,6 @@ exports.searchStores = async (req, res) => {
   }
 };
 
-// ─── OFFERS ───────────────────────────────────────────────────────────────────
 exports.getStoresWithOffers = async (req, res) => {
   try {
     const { gender } = req.query;
@@ -547,7 +680,6 @@ exports.getStoresWithOffers = async (req, res) => {
       operationalStatus: { $in: ["ACTIVE", "UNDER_INVESTIGATION"] },
     };
 
-    // ✅ Filter offers by gender too
     if (gender === "MEN") storeMatch.storeType = "barbershop";
     else if (gender === "WOMEN") storeMatch.storeType = "beautySalon";
 
@@ -579,7 +711,6 @@ exports.getStoresWithOffers = async (req, res) => {
   }
 };
 
-// ─── AVAILABLE TIME SLOTS ─────────────────────────────────────────────────────
 exports.getAvailableSlots = async (req, res) => {
   try {
     const { storeId } = req.params;
@@ -588,19 +719,13 @@ exports.getAvailableSlots = async (req, res) => {
     if (!date)
       return res.status(400).json({ message: "date is required" });
 
-    const store = await Store.findById(storeId).populate(
-      "stylists",
-      "username avatar rating"
-    );
-    if (!store)
-      return res.status(404).json({ message: "Store not found" });
+    const store = await Store.findById(storeId);
+    if (!store) return res.status(404).json({ message: "Store not found." });
 
     const opening = store.workingHours?.opening || "09:00";
     const closing = store.workingHours?.closing || "21:00";
-
     const [openHour, openMin] = opening.split(":").map(Number);
     const [closeHour, closeMin] = closing.split(":").map(Number);
-
     const openMinutes = openHour * 60 + openMin;
     const closeMinutes = closeHour * 60 + closeMin;
 
@@ -618,7 +743,7 @@ exports.getAvailableSlots = async (req, res) => {
       date,
       status: { $in: ["CONFIRMED", "CHECKED_IN", "IN_SERVICE"] },
     };
-    if (stylistId) bookedQuery.stylist = stylistId;
+    if (stylistId) bookedQuery["stylist.stylistId"] = stylistId;
 
     const bookedAppointments = await Appointment.find(bookedQuery).select(
       "time stylist"
@@ -638,20 +763,15 @@ exports.getAvailableSlots = async (req, res) => {
 
     const slotData = slots.map((time) => {
       const bookedStylistIds = bookedByTime[time] || [];
-
       const stylistAvailability = stylists.map((s) => ({
         stylistId: s._id,
-        stylistName: s.username,
-        avatar: s.avatar,
+        stylistName: s.fullName,
+        avatar: s.photo,
         rating: s.rating,
         isAvailable: !bookedStylistIds.includes(String(s._id)),
       }));
 
-      const hasAvailableStylist = stylistAvailability.some(
-        (s) => s.isAvailable
-      );
-
-      // ✅ Mark past slots as unavailable
+      const hasAvailableStylist = stylistAvailability.some((s) => s.isAvailable);
       const [slotHour, slotMin] = time.split(":").map(Number);
       const slotDate = new Date(date);
       slotDate.setHours(slotHour, slotMin, 0, 0);
@@ -668,36 +788,33 @@ exports.getAvailableSlots = async (req, res) => {
     });
 
     return res.status(200).json({
-      message: "Available slots retrieved",
+      message: "Available slots retrieved.",
       date,
       storeId,
       workingHours: { opening, closing },
       slots: slotData,
     });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    return res.status(500).json({ message: err.message });
   }
 };
 
-// ─── STORE SPECIALISTS ────────────────────────────────────────────────────────
 exports.getStoreSpecialists = async (req, res) => {
   try {
     const { storeId } = req.params;
     const { date, time } = req.query;
 
-    const store = await Store.findById(storeId).populate(
-      "stylists",
-      "username avatar rating"
-    );
-
-    if (!store)
-      return res.status(404).json({ message: "Store not found" });
+    const store = await Store.findById(storeId).select("stylists");
+    if (!store) return res.status(404).json({ message: "Store not found." });
 
     let specialists = store.stylists.map((s) => ({
       stylistId: s._id,
-      name: s.username,
-      avatar: s.avatar,
+      fullName: s.fullName,
+      photo: s.photo,
+      role: s.role,
       rating: s.rating || 0,
+      reviewCount: s.reviewCount || 0,
+      assignedServices: s.assignedServices,
       isAvailable: true,
     }));
 
@@ -710,53 +827,18 @@ exports.getStoreSpecialists = async (req, res) => {
       }).select("stylist");
 
       const bookedIds = bookedAppointments.map((a) => String(a.stylist));
-
       specialists = specialists.map((s) => ({
         ...s,
         isAvailable: !bookedIds.includes(String(s.stylistId)),
       }));
     }
 
-    const reviewCounts = await Appointment.aggregate([
-      {
-        $match: {
-          storeId: store._id,
-          rating: { $ne: null },
-        },
-      },
-      {
-        $group: {
-          _id: "$stylist",
-          reviewCount: { $sum: 1 },
-          avgRating: { $avg: "$rating" },
-        },
-      },
-    ]);
-
-    const reviewMap = {};
-    reviewCounts.forEach((r) => {
-      reviewMap[String(r._id)] = {
-        reviewCount: r.reviewCount,
-        avgRating: Math.round(r.avgRating * 10) / 10,
-      };
-    });
-
-    specialists = specialists.map((s) => ({
-      ...s,
-      reviewCount: reviewMap[String(s.stylistId)]?.reviewCount || 0,
-      rating: reviewMap[String(s.stylistId)]?.avgRating || s.rating || 0,
-    }));
-
-    return res.status(200).json({
-      message: "Specialists retrieved",
-      specialists,
-    });
+    return res.status(200).json({ message: "Specialists retrieved.", specialists });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    return res.status(500).json({ message: err.message });
   }
 };
 
-// ─── QR CODE ──────────────────────────────────────────────────────────────────
 exports.getStoreQR = async (req, res) => {
   try {
     const { storeId } = req.params;
@@ -765,21 +847,11 @@ exports.getStoreQR = async (req, res) => {
     const store = await Store.findById(storeId).select(
       "storeName approvalStatus operationalStatus"
     );
-
-    if (!store)
-      return res.status(404).json({ message: "Store not found." });
-
+    if (!store) return res.status(404).json({ message: "Store not found." });
     if (store.approvalStatus !== "APPROVED")
       return res.status(403).json({ message: "Store not approved." });
 
-    if (
-      store.operationalStatus === "SUSPENDED" ||
-      store.operationalStatus === "BANNED"
-    )
-      return res.status(403).json({ message: "Store is unavailable." });
-
     const qrDataUrl = await generateQRCode(storeId);
-
     return res.status(200).json({
       message: "QR code generated.",
       storeId,
@@ -787,6 +859,6 @@ exports.getStoreQR = async (req, res) => {
       qrDataUrl,
     });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    return res.status(500).json({ message: err.message });
   }
 };
