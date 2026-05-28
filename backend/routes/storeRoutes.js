@@ -29,7 +29,10 @@ const {
   getAvailableSlots,
   getStoreSpecialists,
   getStoresWithOffers,
-  getStoreQR,           // ✅ imported here
+  getStoreQR,
+  getBusinessNotificationSettings,
+  updateBusinessNotificationSettings,
+  setMonthlyRevenueGoal,
 } = require("../controllers/storeController");
 const { protect, allowRoles } = require("../middleware/authMiddleware");
 
@@ -67,6 +70,30 @@ router.post("/services", protect, allowRoles("serviceProvider"), addService);
 router.put("/services/:serviceId", protect, allowRoles("serviceProvider"), updateService);
 router.delete("/services/:serviceId", protect, allowRoles("serviceProvider"), deleteService);
 
+// ─── SETTINGS: NOTIFICATION PREFERENCES ──────────────────────────────────────
+// Settings > Notifications screen — business-specific toggles
+router.get(
+  "/notification-settings",
+  protect,
+  allowRoles("serviceProvider", "RECEPTIONIST"),
+  getBusinessNotificationSettings
+);
+router.put(
+  "/notification-settings",
+  protect,
+  allowRoles("serviceProvider", "RECEPTIONIST"),
+  updateBusinessNotificationSettings
+);
+
+// ─── SETTINGS: MONTHLY REVENUE GOAL ──────────────────────────────────────────
+// Settings > Analytics screen — set target for monthly goal progress bar
+router.put(
+  "/monthly-goal",
+  protect,
+  allowRoles("serviceProvider"),
+  setMonthlyRevenueGoal
+);
+
 // ─── CLIENT DISCOVERY ─────────────────────────────────────────────────────────
 router.get("/all", protect, getAllStores);
 router.get("/featured", protect, getFeaturedStores);
@@ -76,6 +103,6 @@ router.get("/view/:id", protect, getStoreDetails);
 // ─── BOOKING FLOW ─────────────────────────────────────────────────────────────
 router.get("/:storeId/slots", protect, getAvailableSlots);
 router.get("/:storeId/specialists", protect, getStoreSpecialists);
-router.get("/:storeId/qr", protect, getStoreQR);  
+router.get("/:storeId/qr", protect, getStoreQR);
 
 module.exports = router;
