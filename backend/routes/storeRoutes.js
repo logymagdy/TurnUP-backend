@@ -39,6 +39,7 @@ const {
   getSubscriptionStatus,
 } = require("../controllers/storeController");
 const { protect, allowRoles } = require("../middleware/authMiddleware");
+const Store = require("../models/storeModel");
 
 // #swagger.tags = ['Store']
 
@@ -47,14 +48,57 @@ router.get("/search", searchStores);
 router.get("/public/:storeId", getPublicStore);
 
 // ─── BUSINESS ONBOARDING ──────────────────────────────────────────────────────
+// Step 1 — Business Info
 router.post("/register-business", protect, allowRoles("serviceProvider"), registerStoreBusiness);
+
+// Step 2 — Gallery & Documents
 router.post("/complete-profile", protect, allowRoles("serviceProvider"), completeBusinessProfile);
+
+// Step 3 — Schedule, Booking Rules, Social, Phone
 router.put("/setup-wizard", protect, allowRoles("serviceProvider"), updateBusinessSetup);
-router.post("/setup/add-staff", protect, allowRoles("serviceProvider"), addStaffMember);
-// Step 4 — bulk or single service save during onboarding wizard
+
+// Step 4 — Services (single service via onboarding)
 router.post("/setup/add-services", protect, allowRoles("serviceProvider"), saveStoreServices);
+
+// Step 5 — Add Stylists
+router.post("/setup/add-staff", protect, allowRoles("serviceProvider"), addStaffMember);
+
+// Step 7 — Loyalty Program
 router.put("/finish-setup", protect, allowRoles("serviceProvider"), finishStoreSetup);
-// ✅ Step 9 — Subscription
+
+// Step 8 — Accepted Payment Methods
+router.post(
+  "/setup/step8/payment-methods",
+  protect,
+  allowRoles("serviceProvider"),
+  async (req, res) => {
+    try {
+      const { cash, card } = req.body;
+
+      const store = await Store.findOneAndUpdate(
+        { owner: req.user.id },
+        {
+          $set: {
+            "acceptedPaymentMethods.cash": cash ?? true,
+            "acceptedPaymentMethods.card": card ?? true,
+          },
+        },
+        { returnDocument: "after" }
+      );
+
+      if (!store) return res.status(404).json({ message: "Store not found." });
+
+      return res.status(200).json({
+        message: "Step 8 saved.",
+        acceptedPaymentMethods: store.acceptedPaymentMethods,
+      });
+    } catch (err) {
+      return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
+// Step 9 — Subscription
 router.post("/setup/step9/subscribe", protect, allowRoles("serviceProvider"), activateSubscription);
 router.get("/setup/subscription", protect, allowRoles("serviceProvider"), getSubscriptionStatus);
 
