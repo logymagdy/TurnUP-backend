@@ -1006,11 +1006,17 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "OK"
+          },
           "401": {
             "description": "Unauthorized"
           },
           "403": {
             "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
           },
           "500": {
             "description": "Internal Server Error"
@@ -1024,14 +1030,53 @@
             "name": "authorization",
             "in": "header",
             "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "pauseWalkIns": {
+                  "example": "any"
+                },
+                "pauseOnlineBookings": {
+                  "example": "any"
+                },
+                "manualQueueControl": {
+                  "example": "any"
+                },
+                "staffBreakMode": {
+                  "example": "any"
+                },
+                "allowHomeVisits": {
+                  "example": "any"
+                },
+                "allowEventBookings": {
+                  "example": "any"
+                },
+                "acceptGroupBookings": {
+                  "example": "any"
+                }
+              }
+            }
           }
         ],
         "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
           "401": {
             "description": "Unauthorized"
           },
           "403": {
             "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
           },
           "500": {
             "description": "Internal Server Error"
