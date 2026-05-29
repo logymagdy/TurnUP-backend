@@ -37,8 +37,11 @@ const {
   getBusinessNotificationSettings,
   updateBusinessNotificationSettings,
   setMonthlyRevenueGoal,
+  activateSubscription,
+  getSubscriptionStatus,
 } = require("../controllers/storeController");
 const { protect, allowRoles } = require("../middleware/authMiddleware");
+const Store = require("../models/storeModel");
 
 // #swagger.tags = ['Store']
 
@@ -47,18 +50,60 @@ router.get("/search", searchStores);
 router.get("/public/:storeId", getPublicStore);
 
 // ─── BUSINESS ONBOARDING ──────────────────────────────────────────────────────
+// Step 1 — Business Info
 router.post("/register-business", protect, allowRoles("serviceProvider"), registerStoreBusiness);
+
+// Step 2 — Gallery & Documents
 router.post("/complete-profile", protect, allowRoles("serviceProvider"), completeBusinessProfile);
+
+// Step 3 — Schedule, Booking Rules, Social, Phone
 router.put("/setup-wizard", protect, allowRoles("serviceProvider"), updateBusinessSetup);
-router.post("/setup/add-staff", protect, allowRoles("serviceProvider"), addStaffMember);
-// ─── STEP 4: Services & Pricing (onboarding wizard) ──────────────────────────
-// Single service or array: { name, durationMinutes, price, discountPercent?, description?, photo? }
-// OR: { services: [ {...}, {...} ] } for bulk
+
+// Step 4 — Services (bulk or single)
 router.post("/setup/add-services", protect, allowRoles("serviceProvider"), saveStoreServices);
-// ─── STEP 6: Day Control Settings ────────────────────────────────────────────
+
+// Step 5 — Add Stylists
+router.post("/setup/add-staff", protect, allowRoles("serviceProvider"), addStaffMember);
+
+// Step 6 — Day Control Settings
 router.get("/setup/day-control", protect, allowRoles("serviceProvider"), getDayControlSettings);
 router.put("/setup/day-control", protect, allowRoles("serviceProvider"), saveDayControlSettings);
+
+// Step 7 — Loyalty Program
 router.put("/finish-setup", protect, allowRoles("serviceProvider"), finishStoreSetup);
+
+// Step 8 — Accepted Payment Methods
+router.post(
+  "/setup/step8/payment-methods",
+  protect,
+  allowRoles("serviceProvider"),
+  async (req, res) => {
+    try {
+      const { cash, card } = req.body;
+      const store = await Store.findOneAndUpdate(
+        { owner: req.user.id },
+        {
+          $set: {
+            "acceptedPaymentMethods.cash": cash ?? true,
+            "acceptedPaymentMethods.card": card ?? true,
+          },
+        },
+        { returnDocument: "after" }
+      );
+      if (!store) return res.status(404).json({ message: "Store not found." });
+      return res.status(200).json({
+        message: "Step 8 saved.",
+        acceptedPaymentMethods: store.acceptedPaymentMethods,
+      });
+    } catch (err) {
+      return res.status(500).json({ message: err.message });
+    }
+  }
+);
+
+// Step 9 — Subscription
+router.post("/setup/step9/subscribe", protect, allowRoles("serviceProvider"), activateSubscription);
+router.get("/setup/subscription", protect, allowRoles("serviceProvider"), getSubscriptionStatus);
 
 // ─── STORE OPERATIONS ─────────────────────────────────────────────────────────
 router.patch("/toggle-workday", protect, allowRoles("serviceProvider", "RECEPTIONIST"), toggleWorkDay);
@@ -82,7 +127,6 @@ router.put("/services/:serviceId", protect, allowRoles("serviceProvider"), updat
 router.delete("/services/:serviceId", protect, allowRoles("serviceProvider"), deleteService);
 
 // ─── SETTINGS: NOTIFICATION PREFERENCES ──────────────────────────────────────
-// Settings > Notifications screen — business-specific toggles
 router.get(
   "/notification-settings",
   protect,
@@ -97,7 +141,6 @@ router.put(
 );
 
 // ─── SETTINGS: MONTHLY REVENUE GOAL ──────────────────────────────────────────
-// Settings > Analytics screen — set target for monthly goal progress bar
 router.put(
   "/monthly-goal",
   protect,

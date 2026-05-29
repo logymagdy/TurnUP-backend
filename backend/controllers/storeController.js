@@ -137,7 +137,6 @@ exports.addService = async (req, res) => {
 };
 
 // ─── STEP 4 ONBOARDING: Save services (bulk or single) ───────────────────────
-// Accepts { services: [...] } for bulk OR single service fields
 exports.saveStoreServices = async (req, res) => {
   try {
     const { services: servicesArray, ...singleService } = req.body;
@@ -405,6 +404,91 @@ exports.getReceptionists = async (req, res) => {
 exports.completeBusinessProfile = exports.saveStoreDocuments;
 exports.updateBusinessSetup = exports.saveStoreSchedule;
 exports.addStaffMember = exports.addStylistToStore;
+
+// ─── STEP 6: Day Control Settings ────────────────────────────────────────────
+exports.saveDayControlSettings = async (req, res) => {
+  try {
+    const {
+      pauseWalkIns,
+      pauseOnlineBookings,
+      manualQueueControl,
+      staffBreakMode,
+      allowHomeVisits,
+      allowEventBookings,
+      acceptGroupBookings,
+    } = req.body;
+
+    const update = {};
+
+    if (pauseWalkIns !== undefined)
+      update["settings.acceptWalkIns"] = !pauseWalkIns;
+
+    if (pauseOnlineBookings !== undefined)
+      update["settings.acceptOnlineBookings"] = !pauseOnlineBookings;
+
+    if (manualQueueControl !== undefined)
+      update["settings.manualQueueControl"] = manualQueueControl;
+
+    if (staffBreakMode !== undefined)
+      update["settings.staffBreakMode"] = staffBreakMode;
+
+    if (allowHomeVisits !== undefined)
+      update["settings.allowHomeVisits"] = allowHomeVisits;
+
+    if (allowEventBookings !== undefined)
+      update["settings.allowEventBookings"] = allowEventBookings;
+
+    if (acceptGroupBookings !== undefined)
+      update["settings.acceptGroupBookings"] = acceptGroupBookings;
+
+    if (Object.keys(update).length === 0)
+      return res.status(400).json({ message: "No valid fields provided." });
+
+    const store = await Store.findOneAndUpdate(
+      { owner: req.user.id },
+      { $set: update },
+      { returnDocument: "after" }
+    );
+
+    if (!store) return res.status(404).json({ message: "Store not found." });
+
+    return res.status(200).json({
+      message: "Step 6 saved.",
+      dayControlSettings: {
+        pauseWalkIns: !store.settings.acceptWalkIns,
+        pauseOnlineBookings: !store.settings.acceptOnlineBookings,
+        manualQueueControl: store.settings.manualQueueControl,
+        staffBreakMode: store.settings.staffBreakMode,
+        allowHomeVisits: store.settings.allowHomeVisits,
+        allowEventBookings: store.settings.allowEventBookings,
+        acceptGroupBookings: store.settings.acceptGroupBookings,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+exports.getDayControlSettings = async (req, res) => {
+  try {
+    const store = await Store.findOne({ owner: req.user.id }).select("settings");
+    if (!store) return res.status(404).json({ message: "Store not found." });
+
+    return res.status(200).json({
+      dayControlSettings: {
+        pauseWalkIns: !store.settings.acceptWalkIns,
+        pauseOnlineBookings: !store.settings.acceptOnlineBookings,
+        manualQueueControl: store.settings.manualQueueControl || false,
+        staffBreakMode: store.settings.staffBreakMode || false,
+        allowHomeVisits: store.settings.allowHomeVisits || false,
+        allowEventBookings: store.settings.allowEventBookings || false,
+        acceptGroupBookings: store.settings.acceptGroupBookings ?? true,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
 
 // ─── STEP 7: Loyalty Program ──────────────────────────────────────────────────
 exports.saveLoyaltyProgram = async (req, res) => {

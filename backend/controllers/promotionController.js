@@ -118,7 +118,7 @@ exports.deactivatePromotion = async (req, res) => {
     const promotion = await Promotion.findOneAndUpdate(
       { _id: promotionId, storeId: req.user.storeId },
       { isActive: false },
-      { new: true }
+      { returnDocument: "after" }
     );
 
     if (!promotion)
