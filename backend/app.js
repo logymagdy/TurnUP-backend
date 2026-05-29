@@ -116,6 +116,11 @@ try {
   const swaggerUi = require("swagger-ui-express");
   const swaggerPath = path.resolve(__dirname, "./swagger-output.json");
   const swaggerFile = require(swaggerPath);
+
+  // ✅ Force correct production host — prevents localhost showing in Swagger UI
+  swaggerFile.host = "turnup-backend-j5nf.onrender.com";
+  swaggerFile.schemes = ["https"];
+
   app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerFile));
   console.log("Swagger loaded from:", swaggerPath);
 } catch (e) {
