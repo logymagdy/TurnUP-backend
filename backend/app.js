@@ -41,67 +41,46 @@ io.on("connection", (socket) => {
 });
 
 // ─── SECURITY MIDDLEWARE ──────────────────────────────────────────────────────
-
-// ✅ 1. Helmet — secure HTTP headers
 app.use(helmet());
 
-// ✅ 2. CORS
 app.use(cors({
   origin: "*",
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
   allowedHeaders: ["Content-Type", "Authorization"],
 }));
 
-// ✅ 3. Body size limit — prevent large payload attacks
 app.use(express.json({ limit: "10kb" }));
 app.use(express.urlencoded({ extended: true, limit: "10kb" }));
 
 // ─── RATE LIMITERS ────────────────────────────────────────────────────────────
-
-// ✅ General — 100 requests per 15 mins
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
-  message: {
-    success: false,
-    message: "Too many requests. Please try again in 15 minutes.",
-  },
+  message: { success: false, message: "Too many requests. Please try again in 15 minutes." },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
-// ✅ Auth — 10 attempts per 15 mins
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
-  message: {
-    success: false,
-    message: "Too many login attempts. Please try again in 15 minutes.",
-  },
+  message: { success: false, message: "Too many login attempts. Please try again in 15 minutes." },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
-// ✅ OTP — 5 requests per 15 mins
 const otpLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
-  message: {
-    success: false,
-    message: "Too many OTP requests. Please try again in 15 minutes.",
-  },
+  message: { success: false, message: "Too many OTP requests. Please try again in 15 minutes." },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
-// ✅ Booking — 20 per hour
 const bookingLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 20,
-  message: {
-    success: false,
-    message: "Too many booking attempts. Please try again later.",
-  },
+  message: { success: false, message: "Too many booking attempts. Please try again later." },
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -117,7 +96,7 @@ try {
   const swaggerPath = path.resolve(__dirname, "./swagger-output.json");
   const swaggerFile = require(swaggerPath);
 
-  // ✅ Force correct production host — prevents localhost showing in Swagger UI
+  // ✅ Force correct production host
   swaggerFile.host = "turnup-backend-j5nf.onrender.com";
   swaggerFile.schemes = ["https"];
 
@@ -152,22 +131,22 @@ app.use("/api/auth/resend-otp", otpLimiter);
 app.use("/api/booking/create", bookingLimiter);
 
 // ─── ROUTES ───────────────────────────────────────────────────────────────────
-app.use("/api/auth", require("./routes/authRoutes"));
-app.use("/api/users", require("./routes/userRoutes"));
-app.use("/api/store", require("./routes/storeRoutes"));
-app.use("/api/salons", require("./routes/storeRoutes"));
-app.use("/api/queue", require("./routes/queueRoutes"));
-app.use("/api/booking", require("./routes/bookingRoutes"));
-app.use("/api/bookings", require("./routes/bookingRoutes"));
-app.use("/api/checkin", require("./routes/checkInRoutes"));
+app.use("/api/auth",          require("./routes/authRoutes"));
+app.use("/api/users",         require("./routes/userRoutes"));
+app.use("/api/store",         require("./routes/storeRoutes"));
+app.use("/api/salons",        require("./routes/storeRoutes"));
+app.use("/api/queue",         require("./routes/queueRoutes"));
+app.use("/api/booking",       require("./routes/bookingRoutes"));
+app.use("/api/bookings",      require("./routes/bookingRoutes"));
+app.use("/api/checkin",       require("./routes/checkInRoutes"));
 app.use("/api/notifications", require("./routes/notificationRoutes"));
-app.use("/api/payment", require("./routes/paymentRoutes"));
-app.use("/api/payments", require("./routes/paymentRoutes"));
-app.use("/api/loyalty", require("./routes/loyaltyRoutes"));
-app.use("/api/wallet", require("./routes/walletRoutes"));
-app.use("/api/complaint", require("./routes/complaintRoutes"));
-app.use("/api/analytics", require("./routes/analyticsRoutes"));
-app.use("/api/admin", require("./routes/adminRoutes"));
+app.use("/api/payment",       require("./routes/paymentRoutes"));
+app.use("/api/payments",      require("./routes/paymentRoutes"));
+app.use("/api/loyalty",       require("./routes/loyaltyRoutes"));
+app.use("/api/wallet",        require("./routes/walletRoutes"));
+app.use("/api/complaint",     require("./routes/complaintRoutes"));
+app.use("/api/analytics",     require("./routes/analyticsRoutes"));
+app.use("/api/admin",         require("./routes/adminRoutes"));
 
 try {
   app.use("/api/promotion", require("./routes/promotionRoutes"));
