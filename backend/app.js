@@ -3,15 +3,17 @@ const express = require("express");
 const cors = require("cors");
 const http = require("http");
 const { Server } = require("socket.io");
-const helmet = require("helmet");
-const rateLimit = require("express-rate-limit");
 const connectDB = require("./config/db");
-const path = require("path");
+const { runQueueExpiryJob } = require("./services/queueExpiryJob");
+const swaggerUi = require("swagger-ui-express");
+const swaggerFile = require("./swagger-output.json");
 
 const app = express();
 const server = http.createServer(app);
 
 // ─── SOCKET.IO ────────────────────────────────────────────────────────────────
+// Handles real-time store dashboard updates (queue, wait time, check-ins)
+// Push notifications to mobile devices handled via Expo push SDK
 const io = new Server(server, {
   cors: { origin: "*", methods: ["GET", "POST"] },
 });
@@ -21,11 +23,13 @@ app.set("io", io);
 io.on("connection", (socket) => {
   console.log(`🔌 Socket connected: ${socket.id}`);
 
+  // User joins personal room
   socket.on("join", (userId) => {
     socket.join(userId);
     console.log(`👤 User ${userId} joined their room`);
   });
 
+  // Store staff joins store room for live queue and wait time updates
   socket.on("joinStore", (storeId) => {
     socket.join(`store:${storeId}`);
     console.log(`🏪 Socket joined store room: ${storeId}`);
@@ -40,151 +44,63 @@ io.on("connection", (socket) => {
   });
 });
 
-// ─── SECURITY MIDDLEWARE ──────────────────────────────────────────────────────
-
-// ✅ 1. Helmet — secure HTTP headers
-app.use(helmet());
-
-// ✅ 2. CORS
+// ─── MIDDLEWARE ───────────────────────────────────────────────────────────────
 app.use(cors({
   origin: "*",
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
   allowedHeaders: ["Content-Type", "Authorization"],
 }));
-
-// ✅ 3. Body size limit — prevent large payload attacks
-app.use(express.json({ limit: "10kb" }));
-app.use(express.urlencoded({ extended: true, limit: "10kb" }));
-
-// ─── RATE LIMITERS ────────────────────────────────────────────────────────────
-
-// ✅ General — 100 requests per 15 mins
-const generalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  message: {
-    success: false,
-    message: "Too many requests. Please try again in 15 minutes.",
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-// ✅ Auth — 10 attempts per 15 mins
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  message: {
-    success: false,
-    message: "Too many login attempts. Please try again in 15 minutes.",
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-// ✅ OTP — 5 requests per 15 mins
-const otpLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 5,
-  message: {
-    success: false,
-    message: "Too many OTP requests. Please try again in 15 minutes.",
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-// ✅ Booking — 20 per hour
-const bookingLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  max: 20,
-  message: {
-    success: false,
-    message: "Too many booking attempts. Please try again later.",
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
+app.use(express.json());
 
 // ─── DATABASE ─────────────────────────────────────────────────────────────────
 connectDB();
 
-const PORT = process.env.PORT || 3000;
-
 // ─── SWAGGER DOCS ─────────────────────────────────────────────────────────────
-try {
-  const swaggerUi = require("swagger-ui-express");
-  const swaggerPath = path.resolve(__dirname, "./swagger-output.json");
-  const swaggerFile = require(swaggerPath);
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerFile));
 
-  // ✅ Force correct production host — prevents localhost showing in Swagger UI
-  swaggerFile.host = "turnup-backend-j5nf.onrender.com";
-  swaggerFile.schemes = ["https"];
-
-  app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerFile));
-  console.log("Swagger loaded from:", swaggerPath);
-} catch (e) {
-  console.log("Swagger not available yet");
-}
-
-// ─── BACKGROUND JOBS ──────────────────────────────────────────────────────────
-try {
-  const { runQueueExpiryJob } = require("./services/queueExpiryJob");
-  setInterval(() => runQueueExpiryJob(io), 60 * 1000);
-} catch (e) {
-  console.log("Queue expiry job not available");
-}
-
-try {
-  const { runSuspensionLiftJob } = require("./services/suspensionLiftJob");
-  setInterval(() => runSuspensionLiftJob(), 5 * 60 * 1000);
-} catch (e) {
-  console.log("Suspension lift job not available");
-}
-
-// ─── APPLY RATE LIMITERS ──────────────────────────────────────────────────────
-app.use("/api/", generalLimiter);
-app.use("/api/auth/login", authLimiter);
-app.use("/api/auth/register", authLimiter);
-app.use("/api/auth/forgot-password", otpLimiter);
-app.use("/api/auth/verify-otp", otpLimiter);
-app.use("/api/auth/resend-otp", otpLimiter);
-app.use("/api/booking/create", bookingLimiter);
+// ─── QUEUE EXPIRY JOB — runs every 60 seconds ─────────────────────────────────
+setInterval(() => {
+  runQueueExpiryJob(io);
+}, 60 * 1000);
 
 // ─── ROUTES ───────────────────────────────────────────────────────────────────
-app.use("/api/auth", require("./routes/authRoutes"));
-app.use("/api/users", require("./routes/userRoutes"));
-app.use("/api/store", require("./routes/storeRoutes"));
-app.use("/api/salons", require("./routes/storeRoutes"));
-app.use("/api/queue", require("./routes/queueRoutes"));
-app.use("/api/booking", require("./routes/bookingRoutes"));
-app.use("/api/bookings", require("./routes/bookingRoutes"));
-app.use("/api/checkin", require("./routes/checkInRoutes"));
-app.use("/api/notifications", require("./routes/notificationRoutes"));
-app.use("/api/payment", require("./routes/paymentRoutes"));
-app.use("/api/payments", require("./routes/paymentRoutes"));
-app.use("/api/loyalty", require("./routes/loyaltyRoutes"));
-app.use("/api/wallet", require("./routes/walletRoutes"));
-app.use("/api/complaint", require("./routes/complaintRoutes"));
-app.use("/api/analytics", require("./routes/analyticsRoutes"));
-app.use("/api/admin", require("./routes/adminRoutes"));
 
-try {
-  app.use("/api/promotion", require("./routes/promotionRoutes"));
-} catch (e) {
-  console.log("promotionRoutes not available yet");
-}
+// Auth & Users
+app.use("/api/auth",          require("./routes/authRoutes"));
+app.use("/api/users",         require("./routes/userRoutes"));
+
+// Store & Discovery
+app.use("/api/store",         require("./routes/storeRoutes"));
+app.use("/api/salons",        require("./routes/storeRoutes"));
+
+// Operations
+app.use("/api/queue",         require("./routes/queueRoutes"));
+app.use("/api/booking",       require("./routes/bookingRoutes"));
+app.use("/api/bookings",      require("./routes/bookingRoutes"));
+app.use("/api/checkin",       require("./routes/checkInRoutes"));
+
+// Notifications
+app.use("/api/notifications", require("./routes/notificationRoutes"));
+
+// Payments & Marketing
+app.use("/api/payment",       require("./routes/paymentRoutes"));
+app.use("/api/payments",      require("./routes/paymentRoutes"));
+app.use("/api/loyalty",       require("./routes/loyaltyRoutes"));
+app.use("/api/promotion",     require("./routes/promotionRoutes"));
+app.use("/api/complaint",     require("./routes/complaintRoutes"));
+
+// Admin & Analytics
+app.use("/api/analytics",     require("./routes/analyticsRoutes"));
+app.use("/api/admin",         require("./routes/adminRoutes"));
 
 // ─── HEALTH CHECK ─────────────────────────────────────────────────────────────
-app.get("/", (req, res) => {
-  res.json({
-    message: "TurnUP API running ✅",
-    version: "1.2.0",
-    status: "Fully Operational",
-  });
-});
+app.get("/", (req, res) => res.json({
+  message: "TurnUP API running ✅",
+  version: "1.2.0",
+  status: "Fully Operational",
+}));
 
-// ─── 404 HANDLER ──────────────────────────────────────────────────────────────
+// ─── 404 HANDLER ─────────────────────────────────────────────────────────────
 app.use((req, res) => {
   res.status(404).json({
     success: false,
@@ -203,6 +119,7 @@ app.use((err, req, res, next) => {
 });
 
 // ─── START SERVER ─────────────────────────────────────────────────────────────
+const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`🚀 TurnUP server running on port ${PORT}`);
 });
