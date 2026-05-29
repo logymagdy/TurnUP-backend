@@ -20,6 +20,7 @@ const {
   getReceptionists,
   addService,
   updateService,
+  saveStoreServices,
   deleteService,
   getPublicStore,
   searchStores,
@@ -34,6 +35,8 @@ const {
   getBusinessNotificationSettings,
   updateBusinessNotificationSettings,
   setMonthlyRevenueGoal,
+  activateSubscription,
+  getSubscriptionStatus,
 } = require("../controllers/storeController");
 const { protect, allowRoles } = require("../middleware/authMiddleware");
 
@@ -48,7 +51,12 @@ router.post("/register-business", protect, allowRoles("serviceProvider"), regist
 router.post("/complete-profile", protect, allowRoles("serviceProvider"), completeBusinessProfile);
 router.put("/setup-wizard", protect, allowRoles("serviceProvider"), updateBusinessSetup);
 router.post("/setup/add-staff", protect, allowRoles("serviceProvider"), addStaffMember);
+// Step 4 — bulk or single service save during onboarding wizard
+router.post("/setup/add-services", protect, allowRoles("serviceProvider"), saveStoreServices);
 router.put("/finish-setup", protect, allowRoles("serviceProvider"), finishStoreSetup);
+// ✅ Step 9 — Subscription
+router.post("/setup/step9/subscribe", protect, allowRoles("serviceProvider"), activateSubscription);
+router.get("/setup/subscription", protect, allowRoles("serviceProvider"), getSubscriptionStatus);
 
 // ─── STORE OPERATIONS ─────────────────────────────────────────────────────────
 router.patch("/toggle-workday", protect, allowRoles("serviceProvider", "RECEPTIONIST"), toggleWorkDay);
@@ -72,7 +80,6 @@ router.put("/services/:serviceId", protect, allowRoles("serviceProvider"), updat
 router.delete("/services/:serviceId", protect, allowRoles("serviceProvider"), deleteService);
 
 // ─── SETTINGS: NOTIFICATION PREFERENCES ──────────────────────────────────────
-// Settings > Notifications screen — business-specific toggles
 router.get(
   "/notification-settings",
   protect,
@@ -87,7 +94,6 @@ router.put(
 );
 
 // ─── SETTINGS: MONTHLY REVENUE GOAL ──────────────────────────────────────────
-// Settings > Analytics screen — set target for monthly goal progress bar
 router.put(
   "/monthly-goal",
   protect,

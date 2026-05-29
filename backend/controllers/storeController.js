@@ -6,14 +6,7 @@ const { success, error } = require("../utils/responseHandler");
 // ─── STEP 1: Business Info ────────────────────────────────────────────────────
 exports.registerStoreBusiness = async (req, res) => {
   try {
-    const {
-      storeName,
-      logo,
-      storeType,
-      bio,
-      location,
-      coordinates,
-    } = req.body;
+    const { storeName, logo, storeType, bio, location, coordinates } = req.body;
 
     if (!storeName || !storeType)
       return res.status(400).json({ message: "storeName and storeType are required." });
@@ -56,12 +49,7 @@ exports.saveStoreDocuments = async (req, res) => {
 
     const store = await Store.findOneAndUpdate(
       { owner: req.user.id },
-      {
-        $set: {
-          gallery: gallery || [],
-          businessLicense: businessLicense || null,
-        },
-      },
+      { $set: { gallery: gallery || [], businessLicense: businessLicense || null } },
       { returnDocument: "after" }
     );
 
@@ -116,22 +104,13 @@ exports.saveStoreSchedule = async (req, res) => {
   }
 };
 
-// ─── STEP 4: Services ─────────────────────────────────────────────────────────
+// ─── STEP 4: Add Single Service ───────────────────────────────────────────────
 exports.addService = async (req, res) => {
   try {
-    const {
-      name,
-      photo,
-      durationMinutes,
-      price,
-      discountPercent,
-      description,
-    } = req.body;
+    const { name, photo, durationMinutes, price, discountPercent, description } = req.body;
 
     if (!name || !durationMinutes || !price)
-      return res.status(400).json({
-        message: "name, durationMinutes and price are required.",
-      });
+      return res.status(400).json({ message: "name, durationMinutes and price are required." });
 
     const store = await Store.findOne({ owner: req.user.id });
     if (!store) return res.status(404).json({ message: "Store not found." });
@@ -157,6 +136,52 @@ exports.addService = async (req, res) => {
   }
 };
 
+// ─── STEP 4 ONBOARDING: Save services (bulk or single) ───────────────────────
+// Accepts { services: [...] } for bulk OR single service fields
+exports.saveStoreServices = async (req, res) => {
+  try {
+    const { services: servicesArray, ...singleService } = req.body;
+
+    const store = await Store.findOne({ owner: req.user.id });
+    if (!store) return res.status(404).json({ message: "Store not found." });
+
+    if (servicesArray && Array.isArray(servicesArray)) {
+      for (const s of servicesArray) {
+        if (!s.name || !s.durationMinutes || !s.price) continue;
+        store.services.push({
+          name: s.name,
+          photo: s.photo || null,
+          durationMinutes: parseInt(s.durationMinutes),
+          price: parseFloat(s.price),
+          discountPercent: parseFloat(s.discountPercent) || 0,
+          description: s.description || null,
+          isActive: true,
+        });
+      }
+    } else {
+      const { name, photo, durationMinutes, price, discountPercent, description } = singleService;
+      if (!name || !durationMinutes || !price)
+        return res.status(400).json({ message: "name, durationMinutes and price are required." });
+
+      store.services.push({
+        name,
+        photo: photo || null,
+        durationMinutes: parseInt(durationMinutes),
+        price: parseFloat(price),
+        discountPercent: parseFloat(discountPercent) || 0,
+        description: description || null,
+        isActive: true,
+      });
+    }
+
+    await store.save();
+
+    return res.status(200).json({ message: "Step 4 saved.", services: store.services });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
 exports.updateService = async (req, res) => {
   try {
     const { serviceId } = req.params;
@@ -167,15 +192,7 @@ exports.updateService = async (req, res) => {
     const service = store.services.id(serviceId);
     if (!service) return res.status(404).json({ message: "Service not found." });
 
-    const {
-      name,
-      photo,
-      durationMinutes,
-      price,
-      discountPercent,
-      description,
-      isActive,
-    } = req.body;
+    const { name, photo, durationMinutes, price, discountPercent, description, isActive } = req.body;
 
     if (name) service.name = name;
     if (photo !== undefined) service.photo = photo;
@@ -212,17 +229,9 @@ exports.deleteService = async (req, res) => {
 };
 
 // ─── STEP 5: Stylists ─────────────────────────────────────────────────────────
-// ✅ Stylists stored inside store document — shown to clients with photo and services
 exports.addStylistToStore = async (req, res) => {
   try {
-    const {
-      fullName,
-      photo,
-      age,
-      role,
-      assignedServices,
-      payoutAccount,
-    } = req.body;
+    const { fullName, photo, age, role, assignedServices, payoutAccount } = req.body;
 
     if (!fullName)
       return res.status(400).json({ message: "fullName is required." });
@@ -232,9 +241,7 @@ exports.addStylistToStore = async (req, res) => {
 
     if (assignedServices && assignedServices.length > 0) {
       const serviceNames = store.services.map((s) => s.name);
-      const invalid = assignedServices.filter(
-        (s) => !serviceNames.includes(s)
-      );
+      const invalid = assignedServices.filter((s) => !serviceNames.includes(s));
       if (invalid.length > 0)
         return res.status(400).json({
           message: `Services not found in store: ${invalid.join(", ")}`,
@@ -263,7 +270,6 @@ exports.addStylistToStore = async (req, res) => {
   }
 };
 
-// ✅ Route alias — storeRoutes imports addStylist not addStylistToStore
 exports.addStylist = exports.addStylistToStore;
 
 exports.updateStylist = async (req, res) => {
@@ -276,14 +282,7 @@ exports.updateStylist = async (req, res) => {
     const stylist = store.stylists.id(stylistId);
     if (!stylist) return res.status(404).json({ message: "Stylist not found." });
 
-    const {
-      fullName,
-      photo,
-      age,
-      role,
-      assignedServices,
-      payoutAccount,
-    } = req.body;
+    const { fullName, photo, age, role, assignedServices, payoutAccount } = req.body;
 
     if (fullName) stylist.fullName = fullName;
     if (photo !== undefined) stylist.photo = photo;
@@ -318,7 +317,6 @@ exports.removeStylistFromStore = async (req, res) => {
   }
 };
 
-// ✅ Route alias — storeRoutes imports removeStylist not removeStylistFromStore
 exports.removeStylist = exports.removeStylistFromStore;
 
 exports.getStoreStylistsForClient = async (req, res) => {
@@ -328,10 +326,7 @@ exports.getStoreStylistsForClient = async (req, res) => {
     const store = await Store.findById(storeId).select("stylists");
     if (!store) return res.status(404).json({ message: "Store not found." });
 
-    return res.status(200).json({
-      message: "Stylists retrieved.",
-      stylists: store.stylists,
-    });
+    return res.status(200).json({ message: "Stylists retrieved.", stylists: store.stylists });
   } catch (err) {
     return res.status(500).json({ message: err.message });
   }
@@ -396,7 +391,8 @@ exports.removeReceptionist = async (req, res) => {
 exports.getReceptionists = async (req, res) => {
   try {
     const store = await Store.findOne({ owner: req.user.id }).populate(
-      "receptionists", "username email phone"
+      "receptionists",
+      "username email phone"
     );
     if (!store) return res.status(404).json({ message: "Store not found." });
     return res.status(200).json({ receptionists: store.receptionists });
@@ -405,11 +401,11 @@ exports.getReceptionists = async (req, res) => {
   }
 };
 
-// ─── ONBOARDING WIZARD ALIASES ────────────────────────────────────────────────
-// storeRoutes imports these names — they map to the step functions above
-exports.completeBusinessProfile = exports.saveStoreDocuments;   // step 2
-exports.updateBusinessSetup = exports.saveStoreSchedule;        // step 3
-exports.addStaffMember = exports.addStylistToStore;             // step 5
+// ─── ONBOARDING ALIASES ───────────────────────────────────────────────────────
+exports.completeBusinessProfile = exports.saveStoreDocuments;
+exports.updateBusinessSetup = exports.saveStoreSchedule;
+exports.addStaffMember = exports.addStylistToStore;
+
 // ─── STEP 7: Loyalty Program ──────────────────────────────────────────────────
 exports.saveLoyaltyProgram = async (req, res) => {
   try {
@@ -445,16 +441,12 @@ exports.saveLoyaltyProgram = async (req, res) => {
 
     if (!store) return res.status(404).json({ message: "Store not found." });
 
-    return res.status(200).json({
-      message: "Step 7 saved.",
-      loyaltyProgram: store.loyaltyProgram,
-    });
+    return res.status(200).json({ message: "Step 7 saved.", loyaltyProgram: store.loyaltyProgram });
   } catch (err) {
     return res.status(500).json({ message: err.message });
   }
 };
 
-// Fix alias — finishStoreSetup must point to the function defined above
 exports.finishStoreSetup = exports.saveLoyaltyProgram;
 
 // ─── STEP 9: Subscription ────────────────────────────────────────────────────
@@ -514,7 +506,7 @@ exports.getSubscriptionStatus = async (req, res) => {
   }
 };
 
-// ─── STORE PROFILE ───────────────────────────────────────────────────────────
+// ─── STORE PROFILE ────────────────────────────────────────────────────────────
 exports.getStore = async (req, res) => {
   try {
     const store = await Store.findOne({ owner: req.user.id }).populate(
@@ -574,11 +566,7 @@ exports.toggleWorkDay = async (req, res) => {
 
     const store = await Store.findOneAndUpdate(
       { owner: req.user.id },
-      {
-        isWorkDayActive: isActive,
-        isOpen: isActive,
-        isPaused: false,
-      },
+      { isWorkDayActive: isActive, isOpen: isActive, isPaused: false },
       { returnDocument: "after" }
     );
     if (!store) return res.status(404).json({ message: "Store not found." });
@@ -634,9 +622,7 @@ exports.getPublicStore = async (req, res) => {
     if (!store)
       return res.status(404).json({ message: "Store not found or unavailable." });
 
-    await Store.findByIdAndUpdate(req.params.storeId, {
-      $inc: { viewCount: 1 },
-    });
+    await Store.findByIdAndUpdate(req.params.storeId, { $inc: { viewCount: 1 } });
 
     return res.status(200).json(store);
   } catch (err) {
@@ -709,8 +695,7 @@ exports.getStoreDetails = async (req, res) => {
 
 exports.searchStores = async (req, res) => {
   try {
-    const { keyword, type, location, date, time, service, minRating, gender } =
-      req.query;
+    const { keyword, type, location, date, time, service, minRating, gender } = req.query;
 
     const query = {
       approvalStatus: "APPROVED",
@@ -735,9 +720,7 @@ exports.searchStores = async (req, res) => {
     if (minRating) query.rating = { $gte: parseFloat(minRating) };
 
     if (date) {
-      const dayName = new Date(date).toLocaleDateString("en-US", {
-        weekday: "long",
-      });
+      const dayName = new Date(date).toLocaleDateString("en-US", { weekday: "long" });
       query["workingHours.days"] = dayName;
     }
 
@@ -796,8 +779,7 @@ exports.getStoresWithOffers = async (req, res) => {
       endDate: { $gte: now },
     }).populate({
       path: "storeId",
-      select:
-        "storeName storeType logo rating numReviews services location approvalStatus operationalStatus",
+      select: "storeName storeType logo rating numReviews services location approvalStatus operationalStatus",
       match: storeMatch,
     });
 
@@ -840,9 +822,7 @@ exports.getAvailableSlots = async (req, res) => {
     for (let m = openMinutes; m < closeMinutes; m += 30) {
       const h = Math.floor(m / 60);
       const min = m % 60;
-      slots.push(
-        `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`
-      );
+      slots.push(`${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`);
     }
 
     const bookedQuery = {
@@ -851,9 +831,7 @@ exports.getAvailableSlots = async (req, res) => {
       status: { $in: ["CONFIRMED", "CHECKED_IN", "IN_SERVICE"] },
     };
 
-    const bookedAppointments = await Appointment.find(bookedQuery).select(
-      "time stylist"
-    );
+    const bookedAppointments = await Appointment.find(bookedQuery).select("time stylist");
 
     const bookedByTime = {};
     bookedAppointments.forEach((a) => {
@@ -969,18 +947,12 @@ exports.getStoreQR = async (req, res) => {
   }
 };
 
-// ─── SETTINGS: BUSINESS NOTIFICATION PREFERENCES ─────────────────────────────
-// GET  /api/store/notification-settings — Settings > Notifications screen
-// Returns all 8 business notification toggles
-// Access: serviceProvider + RECEPTIONIST
+// ─── SETTINGS: NOTIFICATION PREFERENCES ──────────────────────────────────────
 exports.getBusinessNotificationSettings = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select(
-      "businessNotificationSettings"
-    );
+    const user = await User.findById(req.user.id).select("businessNotificationSettings");
     if (!user) return res.status(404).json({ message: "User not found." });
 
-    // ✅ Return safe defaults for accounts created before this field existed
     const settings = user.businessNotificationSettings || {
       newBooking: true,
       bookingCancellation: true,
@@ -998,8 +970,6 @@ exports.getBusinessNotificationSettings = async (req, res) => {
   }
 };
 
-// PUT  /api/store/notification-settings
-// Body: any subset of the 8 boolean toggle fields
 exports.updateBusinessNotificationSettings = async (req, res) => {
   try {
     const allowed = [
@@ -1023,10 +993,11 @@ exports.updateBusinessNotificationSettings = async (req, res) => {
     if (Object.keys(update).length === 0)
       return res.status(400).json({ message: "No valid fields provided." });
 
+    // ✅ Fixed: returnDocument instead of deprecated { new: true }
     const user = await User.findByIdAndUpdate(
       req.user.id,
       { $set: update },
-      { new: true }
+      { returnDocument: "after" }
     ).select("businessNotificationSettings");
 
     if (!user) return res.status(404).json({ message: "User not found." });
@@ -1041,9 +1012,6 @@ exports.updateBusinessNotificationSettings = async (req, res) => {
 };
 
 // ─── SETTINGS: MONTHLY REVENUE GOAL ──────────────────────────────────────────
-// PUT  /api/store/monthly-goal
-// Sets the monthly revenue target shown on the analytics screen progress bar
-// Access: serviceProvider only
 exports.setMonthlyRevenueGoal = async (req, res) => {
   try {
     const { monthlyRevenueGoal } = req.body;
