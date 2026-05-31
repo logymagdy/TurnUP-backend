@@ -8,12 +8,10 @@ const BUSINESS_ROLES = ["serviceProvider", "RECEPTIONIST", "STYLIST"];
 const CLIENT_ROLES = ["CLIENT"];
 const ALL_ALLOWED_ROLES = [...BUSINESS_ROLES, ...CLIENT_ROLES];
 
-// ─── BREVO EMAIL CLIENT ────────────────────────────────────────────────────────
 const brevoClient = new BrevoClient({
   apiKey: process.env.BREVO_API_KEY,
 });
 
-// ─── TWILIO CLIENT ─────────────────────────────────────────────────────────────
 let twilioClient = null;
 if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
   twilioClient = twilio(
@@ -22,7 +20,6 @@ if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
   );
 }
 
-// ─── TOKEN HELPERS ────────────────────────────────────────────────────────────
 const generateToken = (id, role, storeId) => {
   return jwt.sign({ id, role, storeId }, process.env.JWT_SECRET, {
     expiresIn: "15m",
@@ -38,7 +35,6 @@ const generateRefreshToken = (id) => {
 const generateOtp = () =>
   Math.floor(100000 + Math.random() * 900000).toString();
 
-// ─── OTP EMAIL TEMPLATE ────────────────────────────────────────────────────────
 const otpEmailTemplate = (otp) => `
 <!DOCTYPE html>
 <html>
@@ -57,7 +53,6 @@ const otpEmailTemplate = (otp) => `
 </html>
 `;
 
-// ─── SEND OTP HELPER ──────────────────────────────────────────────────────────
 const sendOtp = async (user) => {
   const otp = generateOtp();
   const otpExpiry = new Date(Date.now() + 5 * 60 * 1000);
@@ -110,6 +105,7 @@ exports.registerUser = async (req, res, next) => {
       phone,
       servicePreference,
       referralCode: incomingReferralCode,
+      storeCode, // ✅ receptionist enters this to auto-link to store
     } = req.body;
 
     if (role === "ADMIN")
@@ -152,6 +148,29 @@ exports.registerUser = async (req, res, next) => {
       }
     }
 
+    // ✅ If RECEPTIONIST — validate store code before creating account
+    let linkedStoreId = null;
+    if (role === "RECEPTIONIST") {
+      if (!storeCode) {
+        return res.status(400).json({
+          message: "Store code is required for receptionist registration. Ask your store owner for the code.",
+        });
+      }
+
+      const Store = require("../models/storeModel");
+      const store = await Store.findOne({
+        storeCode: storeCode.trim().toUpperCase(),
+      });
+
+      if (!store) {
+        return res.status(404).json({
+          message: "Invalid store code. Please check with your store owner.",
+        });
+      }
+
+      linkedStoreId = store._id;
+    }
+
     const newUser = new User({
       username,
       email: email ? email.toLowerCase().trim() : null,
@@ -161,15 +180,23 @@ exports.registerUser = async (req, res, next) => {
       servicePreference: isClientTrack ? servicePreference || null : null,
       referralCode: isClientTrack ? newReferralCode : null,
       referredBy: isClientTrack ? referredBy : null,
-      storeId: null,
+      storeId: linkedStoreId || null,
     });
 
     await newUser.save();
 
-    const token = generateToken(newUser._id, newUser.role, null);
+    // ✅ Add receptionist to store.receptionists array automatically
+    if (role === "RECEPTIONIST" && linkedStoreId) {
+      const Store = require("../models/storeModel");
+      await Store.findByIdAndUpdate(linkedStoreId, {
+        $push: { receptionists: newUser._id },
+      });
+    }
+
+    const token = generateToken(newUser._id, newUser.role, linkedStoreId || null);
     const refreshToken = generateRefreshToken(newUser._id);
 
-    res.status(201).json({
+    return res.status(201).json({
       message: "Account created successfully",
       token,
       refreshToken,
@@ -179,6 +206,7 @@ exports.registerUser = async (req, res, next) => {
       track: isClientTrack ? "CLIENT" : "BUSINESS",
       servicePreference: newUser.servicePreference,
       referralCode: isClientTrack ? newReferralCode : null,
+      storeId: linkedStoreId || null,
     });
   } catch (err) {
     next(err);
@@ -341,14 +369,8 @@ exports.getProfile = async (req, res, next) => {
 exports.updateProfile = async (req, res, next) => {
   try {
     const allowedUpdates = [
-      "username",
-      "phone",
-      "address",
-      "servicePreference",
-      "language",
-      "fcmToken",
-      "dateOfBirth",
-      "gender",
+      "username", "phone", "address", "servicePreference",
+      "language", "fcmToken", "dateOfBirth", "gender",
     ];
     const updates = {};
     allowedUpdates.forEach((field) => {
@@ -537,7 +559,7 @@ exports.verifyOtp = async (req, res, next) => {
     }
 
     if (!user.otp || user.otp !== otp || user.otpExpiry < Date.now()) {
-      user.otpAttempts = (user.otpAttempts || 0) + 1;
+      user.otpAttempts = (user.otpAttempts || 0) + + 1;
 
       if (user.otpAttempts >= 5) {
         user.otpLockedUntil = new Date(Date.now() + 15 * 60 * 1000);
@@ -651,7 +673,7 @@ exports.loginBusiness = async (req, res, next) => {
 
     const Store = require("../models/storeModel");
     const store = await Store.findOne({ owner: user._id }).select(
-      "storeName storeType logo approvalStatus subscriptionStatus trialEndsAt isOpen"
+      "storeName storeType logo approvalStatus subscriptionStatus trialEndsAt isOpen storeCode"
     );
 
     return res.json({
