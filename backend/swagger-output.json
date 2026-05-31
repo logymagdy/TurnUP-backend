@@ -107,6 +107,9 @@
                 },
                 "referralCode": {
                   "example": "any"
+                },
+                "storeCode": {
+                  "example": "any"
                 }
               }
             }
@@ -121,6 +124,9 @@
           },
           "403": {
             "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
           }
         }
       }
