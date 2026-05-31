@@ -3,6 +3,19 @@ const User = require("../models/userModel");
 const Appointment = require("../models/appointmentModel");
 const { success, error } = require("../utils/responseHandler");
 
+// ✅ Generate unique store code — format TURNUP-XXXX
+const generateStoreCode = async () => {
+  let code;
+  let unique = false;
+  while (!unique) {
+    const random = Math.random().toString(36).substring(2, 6).toUpperCase();
+    code = `TURNUP-${random}`;
+    const existing = await Store.findOne({ storeCode: code });
+    if (!existing) unique = true;
+  }
+  return code;
+};
+
 // ─── STEP 1: Business Info ────────────────────────────────────────────────────
 exports.registerStoreBusiness = async (req, res) => {
   try {
@@ -18,6 +31,9 @@ exports.registerStoreBusiness = async (req, res) => {
     if (existingStore)
       return res.status(400).json({ message: "You already have a store registered." });
 
+    // ✅ Generate unique store code automatically
+    const storeCode = await generateStoreCode();
+
     const newStore = new Store({
       owner: req.user.id,
       storeName,
@@ -27,6 +43,7 @@ exports.registerStoreBusiness = async (req, res) => {
       location: location || null,
       coordinates: coordinates || { lat: null, lng: null },
       approvalStatus: "PENDING",
+      storeCode,
     });
 
     await newStore.save();
@@ -35,6 +52,7 @@ exports.registerStoreBusiness = async (req, res) => {
     return res.status(201).json({
       message: "Step 1 saved.",
       storeId: newStore._id,
+      storeCode: newStore.storeCode,
       store: newStore,
     });
   } catch (err) {
@@ -625,6 +643,8 @@ exports.createStore = async (req, res) => {
     if (!storeName || !storeType)
       return res.status(400).json({ message: "storeName and storeType are required." });
 
+    const storeCode = await generateStoreCode();
+
     const store = new Store({
       owner: req.user.id,
       storeName,
@@ -632,6 +652,7 @@ exports.createStore = async (req, res) => {
       location: location || null,
       logo: logo || null,
       bio: bio || null,
+      storeCode,
     });
 
     await store.save();
@@ -1077,7 +1098,6 @@ exports.updateBusinessNotificationSettings = async (req, res) => {
     if (Object.keys(update).length === 0)
       return res.status(400).json({ message: "No valid fields provided." });
 
-    // ✅ Fixed: returnDocument instead of deprecated { new: true }
     const user = await User.findByIdAndUpdate(
       req.user.id,
       { $set: update },
