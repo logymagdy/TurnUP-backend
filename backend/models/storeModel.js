@@ -4,7 +4,7 @@ const serviceSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
     photo: { type: String, default: null },
-    durationMinutes: { type: Number, required: true }, // ✅ single avg duration
+    durationMinutes: { type: Number, required: true },
     price: { type: Number, required: true },
     discountPercent: { type: Number, default: 0 },
     description: { type: String, default: null },
@@ -18,8 +18,8 @@ const stylistSchema = new mongoose.Schema(
     fullName: { type: String, required: true },
     photo: { type: String, default: null },
     age: { type: Number, default: null },
-    role: { type: String, default: null }, // e.g. Senior Barber
-    assignedServices: [{ type: String }], // service names they do
+    role: { type: String, default: null },
+    assignedServices: [{ type: String }],
     payoutAccount: { type: String, default: null },
     rating: { type: Number, default: 0 },
     reviewCount: { type: Number, default: 0 },
@@ -65,6 +65,16 @@ const storeSchema = new mongoose.Schema(
       lng: { type: Number, default: null },
     },
 
+    // ✅ Store code — shared with receptionist for auto-linking
+    // Format: TURNUP-XXXX (e.g. TURNUP-AB12)
+    // Generated automatically when store is created in Step 1
+    storeCode: {
+      type: String,
+      default: null,
+      unique: true,
+      sparse: true,
+    },
+
     // ── Step 2 ────────────────────────────────────────────────────────────
     gallery: [{ type: String }],
     businessLicense: { type: String, default: null },
@@ -94,11 +104,7 @@ const storeSchema = new mongoose.Schema(
     services: { type: [serviceSchema], default: [] },
 
     // ── Step 5 ────────────────────────────────────────────────────────────
-    // ✅ Stylists stored inside store — shown to clients
     stylists: { type: [stylistSchema], default: [] },
-
-    // ── Step 6 (pending) ─────────────────────────────────────────────────
-    // bookingRules will be added when step 6 is pasted
 
     // ── Step 7 ────────────────────────────────────────────────────────────
     loyaltyProgram: { type: loyaltyProgramSchema, default: () => ({}) },
@@ -135,7 +141,7 @@ const storeSchema = new mongoose.Schema(
     trialStartDate: { type: Date, default: Date.now },
     trialEndsAt: {
       type: Date,
-      default: () => new Date(Date.now() + 60 * 24 * 60 * 60 * 1000), // 2 months
+      default: () => new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
     },
     subscribedAt: { type: Date, default: null },
 
@@ -163,9 +169,7 @@ const storeSchema = new mongoose.Schema(
     isPaused: { type: Boolean, default: false },
     isWorkDayActive: { type: Boolean, default: false },
 
-    // ── Analytics: Monthly Revenue Goal ──────────────────────────────────
-    // Set by store owner in Settings > Analytics
-    // Used in analytics screen to show progress bar (e.g. EGP 15,000 / 20,000)
+    // ── Analytics ─────────────────────────────────────────────────────────
     monthlyRevenueGoal: { type: Number, default: 0 },
 
     // ── Stats ─────────────────────────────────────────────────────────────
