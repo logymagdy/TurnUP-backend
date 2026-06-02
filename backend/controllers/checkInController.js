@@ -19,8 +19,8 @@ exports.checkIn = async (req, res) => {
       date: today,
       status: "CONFIRMED",
       $or: [
-        { client: clientId },           // online booked client
-        { isWalkIn: true, checkedIn: false }, // walk-in not yet checked in
+        { client: clientId },
+        { isWalkIn: true, checkedIn: false },
       ],
     });
 
@@ -196,8 +196,9 @@ exports.addWalkIn = async (req, res) => {
     if (!service)
       return res.status(404).json({ message: "Service not found." });
 
+    // ✅ Fixed — correct subdoc comparison using _id
     const stylistInStore = store.stylists.some(
-      (s) => String(s) === String(stylistId)
+      (s) => String(s._id) === String(stylistId)
     );
     if (!stylistInStore)
       return res.status(400).json({ message: "Stylist not found in store." });
@@ -209,27 +210,26 @@ exports.addWalkIn = async (req, res) => {
       now.getMinutes()
     ).padStart(2, "0")}`;
 
+    // ✅ assignQueueSlot now correctly counts ALL entries including DONE
+    // So walk-ins and online bookings share the same queue counter
     const slot = await assignQueueSlot(storeId, today, timeStr, expiryMinutes);
 
-    // ✅ Walk-in appointment — anonymous client
-    // client field uses receptionist ID as placeholder
-    // When walk-in scans QR → their ID replaces it
     const newAppointment = new Appointment({
       storeId,
-      client: req.user.id,  // placeholder — updated when they scan QR
+      client: req.user.id,
       stylist: stylistId,
       service: {
         name: service.name,
         price: service.price,
-        durationMin: service.durationMin,
-        durationMax: service.durationMax,
+        durationMin: service.durationMinutes || 15,
+        durationMax: service.durationMinutes || 30,
       },
       services: [
         {
           name: service.name,
           price: service.price,
-          durationMin: service.durationMin,
-          durationMax: service.durationMax,
+          durationMin: service.durationMinutes || 15,
+          durationMax: service.durationMinutes || 30,
         },
       ],
       totalAmount: service.price,
@@ -240,7 +240,7 @@ exports.addWalkIn = async (req, res) => {
       queueNumber: slot.queueNumber,
       estimatedStartTime: slot.estimatedStartTime,
       expiryTime: slot.expiryTime,
-      checkedIn: false,     // ✅ false — they check in by scanning QR
+      checkedIn: false,
       paymentMethod: null,
       isPaid: false,
       isWalkIn: true,
@@ -265,8 +265,6 @@ exports.addWalkIn = async (req, res) => {
       estimatedStartTime: slot.estimatedStartTime,
       expiryTime: slot.expiryTime,
       appointmentId: newAppointment._id,
-      // ✅ Receptionist shows this to the walk-in client
-      // Client scans store QR to confirm arrival
       instruction: "Ask the client to scan the store QR code to confirm their arrival and see their queue number.",
     });
   } catch (err) {
