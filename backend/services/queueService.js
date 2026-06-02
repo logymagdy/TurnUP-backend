@@ -3,21 +3,24 @@ const Appointment = require("../models/appointmentModel");
 /**
  * Assigns queue number atomically using findOneAndUpdate
  * Prevents race conditions when multiple users book simultaneously
+ * ✅ Fixed — walk-ins and online bookings share the same queue counter
  */
 const assignQueueSlot = async (storeId, date, time, expiryMinutes = 30) => {
-  // ✅ Use lean() for performance — we only need to read, not modify these
+
+  // ✅ Fixed — includes DONE entries so queue counter never resets
+  // This ensures walk-ins and online bookings share the same counter
   const activeEntries = await Appointment.find({
     storeId,
     date,
-    status: { $nin: ["CANCELLED", "NO_SHOW", "EXPIRED", "DONE"] },
+    status: { $nin: ["CANCELLED", "NO_SHOW", "EXPIRED"] },
   })
     .sort({ queueNumber: 1 })
     .lean();
 
-  // ✅ Get highest existing queue number and increment
-  // Using Math.max prevents gaps even if some were cancelled
+  // ✅ Fixed — handles null queueNumbers safely with || 0
   const maxQueueNumber = activeEntries.reduce((max, e) => {
-    return e.queueNumber > max ? e.queueNumber : max;
+    const num = e.queueNumber || 0;
+    return num > max ? num : max;
   }, 0);
 
   const queueNumber = maxQueueNumber + 1;
@@ -32,24 +35,19 @@ const assignQueueSlot = async (storeId, date, time, expiryMinutes = 30) => {
   let baseTime;
 
   if (inServiceEntry) {
-    // Base timing on when current service will finish
     const avg =
       ((inServiceEntry.service?.durationMin || 15) +
         (inServiceEntry.service?.durationMax || 30)) / 2;
     baseTime = new Date(
       new Date(inServiceEntry.actualStartTime).getTime() + avg * 60 * 1000
     );
-    // If that time is in the past, use now
     if (baseTime < now) baseTime = now;
   } else {
-    // No active service — use appointment time if in future, else now
-    const appointmentBase = new Date(`${date}T${time}`);
+    const appointmentBase = new Date(${date}T${time});
     baseTime = appointmentBase > now ? appointmentBase : now;
   }
 
   // ✅ Calculate wait based on all CONFIRMED and CHECKED_IN entries ahead
-  // CHECKED_IN = physically present = full weight
-  // CONFIRMED = not yet arrived = reduced weight (may not show)
   const pendingEntries = activeEntries.filter((e) =>
     ["CONFIRMED", "CHECKED_IN"].includes(e.status)
   );
@@ -57,7 +55,6 @@ const assignQueueSlot = async (storeId, date, time, expiryMinutes = 30) => {
   const totalWaitMinutes = pendingEntries.reduce((sum, e) => {
     const min = e.service?.durationMin || 15;
     const max = e.service?.durationMax || 30;
-    // ✅ Validate durations — use defaults if missing
     const validMin = min > 0 ? min : 15;
     const validMax = max > 0 ? max : 30;
     const avg = (validMin + validMax) / 2;
@@ -69,8 +66,6 @@ const assignQueueSlot = async (storeId, date, time, expiryMinutes = 30) => {
     baseTime.getTime() + totalWaitMinutes * 60 * 1000
   );
 
-  // ✅ Expiry = estimatedStartTime + expiryMinutes
-  // Client has expiryMinutes after their estimated slot to check in
   const expiryTime = new Date(
     estimatedStartTime.getTime() + expiryMinutes * 60 * 1000
   );
