@@ -134,6 +134,18 @@ const appointmentSchema = new mongoose.Schema(
       default: null,
     },
     cancellationReason: { type: String, default: null },
+
+    // ── Digital Tip ────────────────────────────────────────────────────
+    // ✅ Optional tip from client to stylist via Instapay
+    // Client chooses 10 / 30 / 50 / 100 EGP after service is DONE
+    // Backend returns stylist's Instapay number
+    // Client sends money manually via Instapay app
+    tip: {
+      amount: { type: Number, default: 0 },
+      stylistInstapay: { type: String, default: null },
+      paid: { type: Boolean, default: false },
+      paidAt: { type: Date, default: null },
+    },
   },
   { timestamps: true }
 );
