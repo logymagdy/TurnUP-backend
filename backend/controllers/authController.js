@@ -105,7 +105,7 @@ exports.registerUser = async (req, res, next) => {
       phone,
       servicePreference,
       referralCode: incomingReferralCode,
-      storeCode, // ✅ receptionist enters this to auto-link to store
+      storeCode,
     } = req.body;
 
     if (role === "ADMIN")
@@ -559,7 +559,7 @@ exports.verifyOtp = async (req, res, next) => {
     }
 
     if (!user.otp || user.otp !== otp || user.otpExpiry < Date.now()) {
-      user.otpAttempts = (user.otpAttempts || 0) + + 1;
+      user.otpAttempts = (user.otpAttempts || 0) + 1;
 
       if (user.otpAttempts >= 5) {
         user.otpLockedUntil = new Date(Date.now() + 15 * 60 * 1000);
@@ -741,6 +741,83 @@ exports.loginReceptionist = async (req, res, next) => {
       storeId: user.storeId,
       track: "BUSINESS",
       store: store || null,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── REGISTER RECEPTIONIST ────────────────────────────────────────────────────
+// Called from "Create Account" on the receptionist login screen
+// ✅ Explicitly sets role: "RECEPTIONIST"
+// ✅ Auto-links to store via storeCode
+exports.registerReceptionist = async (req, res, next) => {
+  try {
+    const { username, email, phone, password, storeCode } = req.body;
+
+    if (!username)
+      return res.status(400).json({ message: "username is required." });
+    if (!email && !phone)
+      return res.status(400).json({ message: "Email or phone is required." });
+    if (!password)
+      return res.status(400).json({ message: "Password is required." });
+
+    // ✅ storeCode required for auto-linking
+    if (!storeCode)
+      return res.status(400).json({
+        message: "Store code is required. Ask your store owner for the code.",
+      });
+
+    // ✅ Check duplicates
+    const orConditions = [];
+    if (email) orConditions.push({ email: email.toLowerCase().trim() });
+    if (phone) orConditions.push({ phone: phone.trim() });
+
+    const existing = await User.findOne({ $or: orConditions });
+    if (existing)
+      return res.status(400).json({ message: "Email or phone already registered." });
+
+    // ✅ Validate store code
+    const Store = require("../models/storeModel");
+    const store = await Store.findOne({
+      storeCode: storeCode.trim().toUpperCase(),
+    });
+
+    if (!store)
+      return res.status(404).json({
+        message: "Invalid store code. Please check with your store owner.",
+      });
+
+    const newUser = new User({
+      username,
+      email: email ? email.toLowerCase().trim() : undefined,
+      phone: phone ? phone.trim() : undefined,
+      password,
+      role: "RECEPTIONIST",
+      storeId: store._id, // ✅ Auto-linked via store code
+    });
+
+    await newUser.save();
+
+    // ✅ Add to store.receptionists array automatically
+    await Store.findByIdAndUpdate(store._id, {
+      $push: { receptionists: newUser._id },
+    });
+
+    const token = generateToken(newUser._id, newUser.role, store._id);
+    const refreshToken = generateRefreshToken(newUser._id);
+
+    return res.status(201).json({
+      message: "Receptionist account created and linked to store successfully.",
+      token,
+      refreshToken,
+      userId: newUser._id,
+      username: newUser.username,
+      email: newUser.email,
+      phone: newUser.phone,
+      role: "RECEPTIONIST",
+      storeId: store._id,
+      track: "BUSINESS",
     });
   } catch (err) {
     next(err);
