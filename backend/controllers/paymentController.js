@@ -62,7 +62,7 @@ exports.confirmPayAtStore = async (req, res) => {
     if (debtAmount > 0) {
       await User.findByIdAndUpdate(req.user.id, {
         $set: { debt: 0 },
-        $inc: { wallet: -debtAmount }, // deduct from wallet if they have balance
+        $inc: { wallet: -debtAmount },
       });
 
       await sendNotification(
@@ -77,7 +77,7 @@ exports.confirmPayAtStore = async (req, res) => {
 
     // ✅ Mark appointment as PAY_AT_STORE confirmed
     appointment.paymentMethod = "PAY_AT_STORE";
-    appointment.isPaid = false; // ✅ receptionist confirms when cash collected
+    appointment.isPaid = false; // receptionist confirms when cash collected
     await appointment.save();
 
     // ✅ Create payment record
@@ -98,7 +98,7 @@ exports.confirmPayAtStore = async (req, res) => {
       storeCut,
       type: "SERVICE",
       method: "PAY_AT_STORE",
-      status: "PENDING", // ✅ pending until receptionist confirms cash collected
+      status: "PENDING",
       notes: debtAmount > 0
         ? `Service: ${serviceAmount} EGP + Debt: ${debtAmount} EGP`
         : `Service: ${serviceAmount} EGP`,
@@ -168,6 +168,96 @@ exports.getMyPayments = async (req, res) => {
     return res.status(200).json({
       message: "Payments retrieved.",
       payments,
+    });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+// ─── DIGITAL TIP ──────────────────────────────────────────────────────────────
+// ✅ Client sends optional tip to stylist via Instapay after service is DONE
+// Tip amounts: 10 / 30 / 50 / 100 EGP only
+// Backend records tip and returns stylist's Instapay number
+// Client manually sends money via Instapay app
+exports.sendTip = async (req, res) => {
+  try {
+    const { appointmentId, tipAmount } = req.body;
+
+    // ✅ Validate tip amount — only these 4 values allowed
+    if (![10, 30, 50, 100].includes(tipAmount))
+      return res.status(400).json({
+        message: "Tip amount must be 10, 30, 50 or 100 EGP.",
+      });
+
+    const appointment = await Appointment.findById(appointmentId).populate(
+      "storeId",
+      "stylists storeName"
+    );
+
+    if (!appointment)
+      return res.status(404).json({ message: "Appointment not found." });
+
+    // ✅ Only the client who booked can tip
+    if (String(appointment.client) !== String(req.user.id))
+      return res.status(403).json({ message: "Not authorized." });
+
+    // ✅ Can only tip after service is DONE
+    if (appointment.status !== "DONE")
+      return res.status(400).json({
+        message: "You can only tip after the service is completed.",
+      });
+
+    // ✅ Prevent double tipping
+    if (appointment.tip && appointment.tip.paid)
+      return res.status(400).json({
+        message: "You have already sent a tip for this appointment.",
+      });
+
+    // ✅ Get stylist's Instapay number from store.stylists subdoc
+    const store = appointment.storeId;
+    const stylist = store.stylists.id(appointment.stylist);
+    const stylistInstapay = stylist?.payoutAccount || null;
+
+    // ✅ Save tip on appointment
+    appointment.tip = {
+      amount: tipAmount,
+      stylistInstapay,
+      paid: true,
+      paidAt: new Date(),
+    };
+    await appointment.save();
+
+    // ✅ Create tip payment record
+    await Payment.create({
+      client: req.user.id,
+      storeId: store._id,
+      appointmentId: appointment._id,
+      amount: tipAmount,
+      adminCut: 0,
+      storeCut: tipAmount,
+      type: "TIP",
+      method: "INSTAPAY",
+      status: "COMPLETED",
+      notes: `Tip for stylist via Instapay: ${stylistInstapay || "not set"}`,
+    });
+
+    // ✅ Notify store owner about tip
+    await sendNotification(
+      store.owner,
+      "BOOKING_CONFIRMED",
+      `A client tipped ${tipAmount} EGP to a stylist via Instapay.`,
+      "New Tip Received",
+      appointment._id,
+      "APPOINTMENT"
+    );
+
+    return res.status(200).json({
+      message: "Tip recorded successfully.",
+      tipAmount,
+      stylistInstapay,
+      note: stylistInstapay
+        ? `Please send ${tipAmount} EGP via Instapay to: ${stylistInstapay}`
+        : "This stylist has not set up an Instapay account yet.",
     });
   } catch (err) {
     return res.status(500).json({ message: err.message });
