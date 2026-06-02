@@ -8,6 +8,7 @@ const {
   confirmPayAtStore,
   confirmCashCollected,
   getMyPayments,
+  sendTip,
 } = require("../controllers/paymentController");
 const { protect, allowRoles } = require("../middleware/authMiddleware");
 
@@ -15,6 +16,9 @@ const { protect, allowRoles } = require("../middleware/authMiddleware");
 router.post("/initiate", protect, allowRoles("CLIENT"), initiatePayment);
 router.post("/pay-at-store", protect, allowRoles("CLIENT"), confirmPayAtStore);
 router.get("/my-payments", protect, allowRoles("CLIENT"), getMyPayments);
+
+// ✅ Digital tip — client tips stylist via Instapay after service is DONE
+router.post("/tip", protect, allowRoles("CLIENT"), sendTip);
 
 // ─── RECEPTIONIST ─────────────────────────────────────────────────────────────
 router.put(
