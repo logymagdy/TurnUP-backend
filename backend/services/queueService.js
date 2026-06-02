@@ -43,7 +43,7 @@ const assignQueueSlot = async (storeId, date, time, expiryMinutes = 30) => {
     );
     if (baseTime < now) baseTime = now;
   } else {
-    const appointmentBase = new Date(${date}T${time});
+    const appointmentBase = new Date(`${date}T${time}`);
     baseTime = appointmentBase > now ? appointmentBase : now;
   }
 
